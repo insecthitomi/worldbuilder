@@ -1,0 +1,6 @@
+node_modules/
+release/
+test/shots/
+.private/
+*.local.md
+.env*

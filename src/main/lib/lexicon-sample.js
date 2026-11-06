@@ -1,0 +1,145 @@
+'use strict';
+/* The example world's Saltspeak: a salt-hissing coastal tongue. Pronunciations are phonemic; spellings come from the
+   phonology's spelling rules (ʃ → sh, θ → th). `root` names another word's pronunciation; `place` a sample key. */
+
+const PHONOLOGY = {
+  consonants: ['s', 'ʃ', 'k', 't', 'l', 'r', 'h', 'n', 'm', 'w', 'g', 'θ', 'd', 'f', 'b'],
+  vowels: ['a', 'e', 'o', 'i', 'u'],
+  patterns: ['CV*6', 'CVK*4', 'sPV', 'V', 'VK', 'OLV'],
+  syllables: [1, 3],
+  banned: ['ʃs', 'sʃ', 'θs', 'sθ', 'hh', 'h$', 'w$', 'wu', 'uw', 'fθ', 'θf', 'ʃθ', 'θʃ', 'ʃh', 'θh', 'sh', 'tl', 'dl', 'wl', 'wr', 'hl', 'hr'],
+  weights: { s: 9, ʃ: 6, k: 5, l: 5, t: 4, r: 4, h: 3, n: 4, m: 3, w: 3, g: 2, θ: 3, d: 2, f: 1.5, b: 1, a: 7, e: 6, o: 4, i: 3, u: 2 },
+  romanization: [],
+  groups: { K: 's ʃ l r n m k t θ', O: 'k g b f t d', P: 'k t' },
+  stress: 'first',
+  dropoff: 'gentle',
+  maxCluster: 2,
+  maxVowels: 2,
+};
+
+/* ipa, pos, gloss, definition, etymology, root (ipa), tags, place key */
+const W = (ipa, pos, gloss, definition, etymology, root, tags, place) => ({ ipa, pos, gloss, definition: definition || '', etymology: etymology || '', root: root || '', tags: tags || [], place: place || '' });
+const WORDS = [
+  W('ˈsa.el', 'n', 'sea', 'The open sea, spoken of as a living thing that gives and takes.', 'From the old root *sa- “brine”.', '', ['sea']),
+  W('sa', 'n', 'salt', 'Salt; also wealth, since salt was the coin of the march.', 'One of the oldest words in the tongue.', '', ['sea', 'trade']),
+  W('ˈsa.len', 'v', 'to salt, to preserve', 'To cure fish in salt; figuratively, to keep a memory from rotting.', 'sa “salt” + -len (makes verbs).', 'sa', ['trade']),
+  W('ʃel', 'adj', 'flat, level, calm', 'Flat or level; of water, calm and glassy.'),
+  W('ˈsa.ʃel', 'n', 'salt-flat', 'The white pans the tide leaves behind as it withdraws.', 'sa “salt” + shel “flat”.', 'sa', ['land']),
+  W('teʃ', 'n', 'tide', 'The tide; also time, since days were once counted in tides.', '', '', ['sea', 'time']),
+  W('ˈteʃ.la', 'v', 'to rise, to flood', 'Of water: to rise, to come in, to cover.', 'tesh “tide” + -la (makes verbs of motion).', 'teʃ', ['sea']),
+  W('wel', 'n', 'well, spring', 'A freshwater well or spring — precious on a salt coast.', '', '', ['land']),
+  W('ˈteʃ.wel', 'name', 'Tidewell', 'The town of Tidewell, named for the well the high tide reaches.', 'tesh “tide” + wel “well”. The name Tidewell translates it.', 'teʃ', ['place-name'], 'tidewell'),
+  W('ˈke.wa', 'n', 'gull', 'A gull; any loud sea-bird. Gulls are said to carry gossip from port to port.', '', '', ['animal', 'sea']),
+  W('heʃ', 'n', 'haven, harbour', 'Sheltered water; a harbour; by extension, safety.', '', '', ['sea', 'land']),
+  W('ˈke.wa.heʃ', 'name', 'Gullhaven', 'The free port of Gullhaven.', 'kewa “gull” + hesh “haven”. The common name Gullhaven translates it.', 'ˈke.wa', ['place-name'], 'gullhaven'),
+  W('mur', 'n', 'mire, bog', 'Soft ground that takes a boot and keeps it.', '', '', ['land']),
+  W('olθ', 'n', 'fen, marsh', 'Low wet ground where the sea seeps in under the reeds.', '', '', ['land']),
+  W('ˈmu.rolθ', 'name', 'Mirefen', 'The reed country of Mirefen.', 'mur “mire” + olth “fen”, sharing the r.', 'mur', ['place-name'], 'mirefen'),
+  W('skol', 'v', 'to sink, to go under', 'To sink; to go under the water and not come up.', '', '', ['sea']),
+  W('ˈsko.len', 'adj', 'drowned, sunken', 'Drowned or sunk; of a town, lost to the sea.', 'skol “sink” + -en (a finished action).', 'skol', ['sea']),
+  W('raθ', 'n', 'king, chief', 'A king or chief; literally “the one who keeps the salt”.', '', '', ['people']),
+  W('ˈsko.len raθ', 'phr', 'the Drowned King', 'The god-king said to sleep beneath the sea; sailors pour salt over the side for him.', 'skolen “drowned” + rath “king”.', 'raθ', ['faith']),
+  W('grosk', 'n', 'storm', 'A storm at sea; also blind anger.', '', '', ['sea', 'weather']),
+  W('lis', 'n', 'light', 'Light; the gleam on water.', '', '', ['weather']),
+  W('ˈlis.ka', 'n', 'lantern', 'A lantern; a ship\'s light; a lighthouse fire.', 'lis “light” + -ka (a made thing).', 'lis', ['tool']),
+  W('dun', 'n', 'rock, skerry', 'A rock standing out of the sea.', '', '', ['sea', 'land']),
+  W('ˈlis.ka.dun', 'name', 'Lanternrock', 'The rock where the great lantern burns.', 'liska “lantern” + dun “rock”.', 'ˈlis.ka', ['place-name'], 'lanternrock'),
+  W('tor', 'n', 'spire, tower', 'A tower or spire; anything tall that the wind argues with.', '', '', ['land']),
+  W('ˈgros.kor', 'name', 'Stormspire', 'The black spire on the northern head.', 'grosk “storm” + tor “spire”, the t lost between consonants.', 'grosk', ['place-name'], 'stormspire'),
+  W('glas', 'adj', 'grey, pale', 'Grey or grey-green; the colour of the sea in winter.', '', '', ['colour']),
+  W('ˈgla.ʃel', 'name', 'Greyflats', 'The grey salt-flats south of Gullhaven.', 'glas “grey” + shel “flat”; s and sh run together.', 'glas', ['place-name'], 'greyflats'),
+  W('lend', 'n', 'march, borderland', 'A borderland; the edge where one country thins into another.', '', '', ['land']),
+  W('ˈsa.lend', 'name', 'Saltmarch', 'The whole coast from the Greyflats to Stormspire.', 'sa “salt” + lend “march”.', 'sa', ['place-name'], 'saltmarch'),
+  W('tesk', 'n', 'market, trade-meet', 'A market; any place where goods change hands.', '', '', ['trade']),
+  W('ˈsko.len tesk', 'name', 'Sunkenmarket', 'The market whose stalls stand in the shallows at low tide.', 'skolen “sunken” + tesk “market”.', 'tesk', ['place-name'], 'sunkenmarket'),
+  W('hald', 'n', 'keep, stronghold', 'A walled keep; a place that holds out.', '', '', ['land']),
+  W('ˈris.θa', 'n', 'crown, circlet', 'A crown or circlet; also the ring of foam round a rock.', '', '', ['people']),
+  W('ˈun.sa.el', 'adj', 'inland', 'Inland; literally “un-sea”, and usually said with pity.', 'un- “away from” + sael “sea”.', 'ˈsa.el', ['land']),
+  W('oʃ', 'n', 'home, hearth', 'Home; the hearth-fire; one\'s own people.', '', '', ['people']),
+  W('ˈma.e', 'n', 'mother', 'Mother; also the moon, the mother of tides.', '', '', ['people', 'family']),
+  W('ˈmi.ra', 'adj', 'dear, beloved', 'Dear or beloved; often given as a girl\'s name.', 'From mae “mother” with the fond ending -ra.', 'ˈma.e', ['people', 'names']),
+  W('daθ', 'n', 'father', 'Father; the one who mends the nets.', '', '', ['people', 'family']),
+  W('nil', 'n', 'child', 'A child; a young one of any kind.', '', '', ['people', 'family']),
+  W('ˈnil.raθ', 'n', 'heir', 'An heir; literally “king-child”.', 'nil “child” + rath “king”.', 'nil', ['people']),
+  W('ˈus.ke', 'n', 'fresh water', 'Sweet water, as opposed to the sea.', '', '', ['land']),
+  W('ˈwer.ra', 'n', 'wave', 'A wave; also a sudden feeling that knocks one over.', '', '', ['sea']),
+  W('kel', 'n', 'boat', 'A boat; anything that floats with a person in it.', '', '', ['sea', 'tool']),
+  W('neʃ', 'n', 'net', 'A fishing net; also a plan with many knots.', '', '', ['tool']),
+  W('ilk', 'n', 'fish', 'A fish; food in general.', '', '', ['animal', 'sea']),
+  W('sarn', 'n', 'shore, strand', 'The shore; the strip between salt and soil.', '', '', ['sea', 'land']),
+  W('ˈfa.el', 'n', 'wind', 'Wind; the breath of the sea.', '', '', ['weather']),
+  W('ka', 'v', 'to go', 'To go, to leave, to set out.', '', '', ['motion']),
+  W('ˈa.ka', 'v', 'to return, to come back', 'To return; to come back as the tide does.', 'a- “again” + ka “go”.', 'ka', ['motion']),
+  W('ˈka.wen', 'n', 'wanderer', 'A wanderer; one who never stays a full tide.', 'ka “go” + -wen (one who does).', 'ka', ['people']),
+  W('ruθ', 'adj', 'red', 'Red; the colour of rust and of the second moon.', '', '', ['colour']),
+  W('ruθ ˈka.wen', 'name', 'the Red Wanderer', 'The red moon that wanders across the sky.', 'ruth “red” + kawen “wanderer”.', 'ˈka.wen', ['sky']),
+  W('ˈglas.ma.e', 'name', 'the Pale Mother', 'The pale moon, mother of tides.', 'glas “pale” + mae “mother”.', 'ˈma.e', ['sky']),
+  W('lo', 'v', 'to see', 'To see; to understand.', '', '', ['sense']),
+  W('osk', 'v', 'to hear, to listen', 'To hear; to listen for the drowned.', '', '', ['sense']),
+  W('ˈse.la', 'v', 'to sing', 'To sing; to call to the tide.', '', '', ['sense']),
+  W('ˈse.len', 'n', 'song', 'A song; a spell sung to the sea.', 'sela “sing” + -en.', 'ˈse.la', ['faith']),
+  W('ˈte.ʃe.la', 'n', 'tide-witch', 'One who sings to the tide and is answered.', 'tesh “tide” + sela “sing”; the s is swallowed.', 'teʃ', ['faith', 'people']),
+  W('θal', 'v', 'to die', 'To die; to go down to the Drowned King.', '', '', ['faith']),
+  W('ˈθa.lis', 'n', 'death', 'Death; the last tide.', 'thal “die” + -is (makes nouns).', 'θal', ['faith']),
+  W('aun', 'adj', 'old', 'Old; worn by the sea.', '', '', []),
+  W('nis', 'adj', 'new', 'New; fresh from the water.', '', '', []),
+  W('hel', 'adj', 'good, whole', 'Good; whole; unbroken.', '', '', []),
+  W('durk', 'adj', 'foul, bad', 'Foul or bad; of weather, dangerous.', '', '', ['weather']),
+  W('na', 'pron', 'I, me', '', '', '', ['grammar']),
+  W('ke', 'pron', 'you', '', '', '', ['grammar']),
+  W('nas', 'pron', 'we, us', '', '', '', ['grammar']),
+  W('uʃ', 'part', 'not', 'Placed before what it denies.', '', '', ['grammar']),
+  W('e', 'conj', 'and', '', '', '', ['grammar']),
+  W('o', 'part', 'of', 'Marks belonging: rath o sael, “king of the sea”.', '', '', ['grammar']),
+  W('ta', 'prep', 'to, toward', '', '', '', ['grammar']),
+  W('im', 'prep', 'in, under', 'In; under (of water).', '', '', ['grammar']),
+  W('skel', 'n', 'bone', 'A bone; a wreck\'s ribs.', '', '', ['body']),
+  W('omsk', 'n', 'secret', 'A secret; something kept below the waterline.', '', '', ['people']),
+  W('brin', 'n', 'bell', 'A bell; the drowned bells of Tidewell ring at the lowest tides.', '', '', ['faith']),
+  W('naθ', 'n', 'night', 'Night; the dark between tides.', '', '', ['time']),
+  W('ˈli.sa', 'n', 'day', 'Day; the light between nights.', 'lis “light” + -a.', 'lis', ['time']),
+  W('ˈis.ter', 'n', 'star', 'A star; a lantern for the dead.', '', '', ['sky']),
+  W('ˈhal.la', 'n', 'hall, chapel', 'A hall; a house of worship.', '', '', ['faith']),
+  W('ˈsko.len ˈhal.la', 'name', 'the Drowned Church', 'The faith that keeps the Drowned King\'s rites.', 'skolen “drowned” + halla “hall”.', 'ˈhal.la', ['faith']),
+];
+
+/* a short sound-change set: how inland speech drifted from the coast */
+const CHANGES = {
+  branches: [{
+    id: 'inland', name: 'Inland drift', daughterId: null,
+    categories: { V: 'a e i o u', C: 's ʃ k t l r h n m w g θ d f b' },
+    rules: [
+      { id: 'r1', from: 'θ', to: 't', env: '', note: 'Inland mouths lost the soft th.' },
+      { id: 'r2', from: 'w', to: 'v', env: '', note: 'w hardened to v.' },
+      { id: 'r3', from: 'k', to: 'g', env: 'V_V', note: 'k softened between vowels.' },
+      { id: 'r4', from: 'ʃ', to: 's', env: '_#', note: 'A final sh became s.' },
+      { id: 'r5', from: 'e', to: 'i', env: '_#', note: 'A final e rose to i.' },
+    ],
+  }],
+  active: 'inland',
+};
+
+const PHRASES = [
+  { id: 'p1', text: 'the drowned king returns', out: 'skolen rath aka' },
+  { id: 'p2', text: 'salt and light', out: 'sa e lis' },
+  { id: 'p3', text: 'we hear the sea', out: 'nas osk sael' },
+];
+
+const SCRIPT = {
+  name: 'Tide-runes',
+  direction: 'ltr',
+  font: '',
+  notes: '<p>Saltspeak is written in <strong>tide-runes</strong>: strokes cut into driftwood and wet clay, meant to be read by lantern light. '
+    + 'Each sign stands for one sound. Vowels hang below the line like weed from a hull; consonants stand on it.</p>'
+    + '<p>Names of the drowned are written backwards, so the sea can read them.</p>',
+  glyphs: [
+    { sound: 'a', glyph: '△', name: 'sail' }, { sound: 'e', glyph: '▽', name: 'keel' }, { sound: 'i', glyph: 'ǀ', name: 'mast' },
+    { sound: 'o', glyph: '○', name: 'moon' }, { sound: 'u', glyph: '∪', name: 'cup' }, { sound: 's', glyph: '∿', name: 'wave' },
+    { sound: 'sh', glyph: '≈', name: 'swell' }, { sound: 'k', glyph: '⋀', name: 'gull' }, { sound: 't', glyph: '⊤', name: 'post' },
+    { sound: 'th', glyph: '⊙', name: 'eye' }, { sound: 'l', glyph: '∣', name: 'line' }, { sound: 'r', glyph: '⌒', name: 'rope' },
+    { sound: 'n', glyph: '∩', name: 'arch' }, { sound: 'm', glyph: '⊓', name: 'door' }, { sound: 'h', glyph: '⊣', name: 'hook' },
+    { sound: 'w', glyph: 'ω', name: 'bird' }, { sound: 'g', glyph: '⋁', name: 'beak' }, { sound: 'd', glyph: '⊥', name: 'anchor' },
+  ],
+};
+
+module.exports = { PHONOLOGY, WORDS, CHANGES, PHRASES, SCRIPT };

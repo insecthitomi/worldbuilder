@@ -1,0 +1,117 @@
+/* Materials. Three roles (panel, widget, control), each glass or solid, switched by
+   data-mat-<role> on <html>. Colours only come from tokens. */
+
+.gk-panel, .gk-widget, .gk-control { border: 1px solid var(--line); }
+.gk-panel { border-radius: var(--radius); }
+.gk-widget { border-radius: var(--radius-sm); }
+
+/* ---------- Prism: the GPU draws these surfaces (fill, rim, light); only their CSS look steps aside (text,
+   layout, focus and hit testing stay) ---------- */
+html.prism [data-prism] { background-color: transparent !important; background-image: none !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html.prism :is([data-prism="indicator"], [data-prism-accent="fill"]) { color: var(--accent-ink); --text: var(--accent-ink); }
+html.prism .gk-btn.danger[data-prism] { color: #fff; }
+html.prism [data-prism]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- glass rim ----------
+   No flat border: a faint full ring, a one-device-pixel specular line on the edge that faces the light, a slightly
+   darker far edge, a soft inner highlight and a drop. Hover and selection raise --rim-k (brighter rim), never an
+   opaque outline. Prism draws the same rim on the GPU. */
+html[data-mat-panel="glass"] .gk-panel,
+html[data-mat-widget="glass"] .gk-widget,
+html[data-mat-control="glass"] .gk-control,
+html body :is(.gk-panel, .gk-widget)[data-mat="glass"] {
+  /* re-resolved per surface so a local --rim-k (hover, selection) takes effect */
+  --rim-hi: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 85%, 100%)), transparent);
+  --rim-mid: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 26%, 100%)), transparent);
+  --rim-lo: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 12%, 100%)), transparent);
+  --rim:
+    inset 0 0 0 var(--hair) var(--rim-lo),
+    inset calc(var(--hair) * var(--lx, 0)) calc(var(--hair) * var(--ly, 1)) 0 var(--rim-hi),
+    inset calc(var(--hair) * var(--lx, 0) * -1) calc(var(--hair) * var(--ly, 1) * -1) 0 var(--rim-far),
+    inset calc(var(--lx, 0) * 12px) calc(var(--ly, 1) * 12px) 20px -16px var(--rim-mid);
+  border-color: transparent;
+}
+
+/* ---------- glass: panels and widgets ---------- */
+html[data-mat-panel="glass"] .gk-panel,
+html[data-mat-widget="glass"] .gk-widget {
+  background-color: var(--glass-fill);
+  background-image:
+    radial-gradient(140% 70% at calc(50% + var(--lip-x) * -22) calc(50% - var(--lip-y) * 45), color-mix(in srgb, var(--hl) calc(var(--shine) * 22%), transparent), transparent 58%),
+    linear-gradient(var(--light-angle), color-mix(in srgb, var(--hl) calc(var(--shine) * 12%), transparent), transparent var(--light-reach), color-mix(in srgb, var(--hl) calc(var(--shine) * 4%), transparent));
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  box-shadow:
+    var(--rim),
+    inset calc(var(--lip-x) * -14) calc(var(--lip-y) * -14) 30px -24px var(--caustic),
+    var(--drop-x) var(--drop-y) 46px -18px color-mix(in srgb, var(--sh) 38%, transparent),
+    0 3px 8px color-mix(in srgb, var(--sh) 12%, transparent);
+}
+html[data-mat-widget="glass"] .gk-widget { background-color: color-mix(in srgb, var(--tint) calc(var(--glass-a) * 80%), transparent); }
+/* lens-free glass (lists of cards, toasts, pop-ups): the same rim and light, no per-item backdrop blur, so a
+   hundred of them cost nothing; a whisper of fill keeps them reading as glass */
+html[data-mat-panel="glass"] .gk-panel.gk-nolens,
+html[data-mat-widget="glass"] .gk-widget.gk-nolens {
+  backdrop-filter: none;
+  background-color: color-mix(in srgb, var(--tint) calc(var(--glass-a) * 80%), color-mix(in srgb, var(--hl) 4%, transparent));
+}
+/* overlays float over live content and keep their frost */
+html[data-mat-panel="glass"] :is(.gk-panel, .gk-widget).gk-nolens:is(.gk-toast, [role="dialog"], [role="menu"], .open) { backdrop-filter: blur(max(var(--glass-blur), 12px)) saturate(1.35); background-color: color-mix(in srgb, var(--tint) calc(var(--glass-a) * 100%), color-mix(in srgb, var(--bg) 35%, transparent)); }
+
+/* ---------- glass: controls are CSS-lit, never refracted, so their text stays sharp ---------- */
+html[data-mat-control="glass"] .gk-control {
+  --rim-k: 1.15;
+  background-color: color-mix(in srgb, var(--tint) calc(var(--glass-a) * 110%), transparent);
+  background-image: linear-gradient(var(--light-angle), color-mix(in srgb, var(--hl) calc(var(--shine) * 30%), transparent) 0%, color-mix(in srgb, var(--hl) calc(var(--shine) * 6%), transparent) 52%, color-mix(in srgb, var(--hl) calc(var(--shine) * 14%), transparent) 100%);
+  backdrop-filter: blur(12px) saturate(1.5);
+  box-shadow: var(--rim), inset 0 -8px 12px -10px var(--caustic), calc(var(--drop-x) * .3) calc(var(--drop-y) * .3) 16px -8px color-mix(in srgb, var(--sh) 40%, transparent);
+}
+html[data-mat-control="glass"] .gk-control:is(.primary, .is-accent) {
+  background-color: var(--accent); color: var(--accent-ink); --text: var(--accent-ink);
+  --rim-hi: color-mix(in srgb, #fff calc(var(--shine) * 80%), transparent); --rim-lo: color-mix(in srgb, var(--accent) 70%, #fff); --rim-mid: color-mix(in srgb, #fff calc(var(--shine) * 25%), transparent);
+  background-image: linear-gradient(var(--light-angle), color-mix(in srgb, var(--accent) 60%, #fff) 0%, var(--accent) 48%, color-mix(in srgb, var(--accent) 80%, #000) 100%);
+  box-shadow: var(--rim), 0 10px 22px -10px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+/* soft selection (chips, toggled tools): an accent wash and an accent-lit rim */
+html[data-mat-control="glass"] .gk-control:is(.gk-chip.on, .gk-btn.on:not(.primary), [aria-pressed="true"]:not(.primary)) {
+  --rim-k: 1.6; --rim-hi: color-mix(in srgb, var(--accent) 85%, #fff); --rim-lo: color-mix(in srgb, var(--accent) 55%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 24%, color-mix(in srgb, var(--tint) calc(var(--glass-a) * 110%), transparent));
+}
+/* fields are concave: well colour inside, the lit line on the far edge */
+html[data-mat-control="glass"] :is(input, textarea, select).gk-control {
+  --rim-hi: color-mix(in srgb, var(--hl) calc(var(--shine) * 45%), transparent);
+  background-image: linear-gradient(var(--well), var(--well));
+  background-color: color-mix(in srgb, var(--tint) calc(var(--glass-a) * 60%), color-mix(in srgb, var(--bg) 30%, transparent));
+  box-shadow:
+    inset 0 0 0 var(--hair) var(--rim-lo),
+    inset calc(var(--hair) * var(--lx, 0) * -1) calc(var(--hair) * var(--ly, 1) * -1) 0 var(--rim-hi),
+    inset calc(var(--lx, 0) * 2px) calc(var(--ly, 1) * 2px) 4px color-mix(in srgb, var(--sh) 22%, transparent);
+}
+
+/* hover and selection brighten the rim */
+html :is(.gk-control:is(button, .gk-chip):hover:not(:disabled), .gk-widget.interactive:hover, .gk-widget:is(.on, .sel, .active), :is(input, textarea, select).gk-control:focus) { --rim-k: 1.7; }
+
+/* ---------- solid: a clean thin border ---------- */
+html[data-mat-panel="solid"] .gk-panel { background: var(--solid-panel); --text: var(--solid-panel-ink); backdrop-filter: none; box-shadow: var(--drop-x) var(--drop-y) 40px -22px rgba(0, 0, 0, .45); }
+html[data-mat-widget="solid"] .gk-widget { background: var(--solid-widget); --text: var(--solid-widget-ink); backdrop-filter: none; box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .5); }
+html[data-mat-control="solid"] .gk-control { background: var(--solid-control); --text: var(--solid-control-ink); backdrop-filter: none; box-shadow: 0 1px 0 color-mix(in srgb, #fff 10%, transparent) inset, 0 4px 10px -6px rgba(0, 0, 0, .5); }
+html[data-mat-control="solid"] .gk-control:is(.primary, .is-accent) { background: var(--accent); --text: var(--accent-ink); border-color: transparent; }
+html[data-mat-control="solid"] .gk-control:is(.gk-chip.on, .gk-btn.on:not(.primary), [aria-pressed="true"]:not(.primary)) { background: color-mix(in srgb, var(--accent) 28%, var(--solid-control)); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+html[data-mat-control="solid"] :is(input, textarea, select).gk-control { background: color-mix(in srgb, var(--well), var(--solid-control)); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .25); }
+
+/* any surface can force a material regardless of the global switch (html body … outranks the global rules) */
+html body .gk-panel[data-mat="solid"] { background: var(--solid-panel); --text: var(--solid-panel-ink); border-color: var(--line); backdrop-filter: none; box-shadow: var(--drop-x) var(--drop-y) 40px -22px rgba(0, 0, 0, .45); }
+html body .gk-widget[data-mat="solid"] { background: var(--solid-widget); --text: var(--solid-widget-ink); border-color: var(--line); backdrop-filter: none; box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .5); }
+html body :is(.gk-panel, .gk-widget)[data-mat="glass"] {
+  background-color: var(--glass-fill);
+  background-image: linear-gradient(var(--light-angle), color-mix(in srgb, var(--hl) calc(var(--shine) * 12%), transparent), transparent var(--light-reach));
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35); --text: inherit; color: var(--text);
+  box-shadow: var(--rim), var(--drop-x) var(--drop-y) 46px -18px color-mix(in srgb, var(--sh) 38%, transparent);
+}
+html body :is(.gk-panel, .gk-widget)[data-mat="clear"] { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
+
+/* motion: lift on hover, squash on press */
+.gk-control { transition: transform .16s cubic-bezier(.2, .9, .25, 1.3), box-shadow .16s, filter .16s, background-color .16s; }
+.gk-control:is(button, .gk-chip):hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06) saturate(1.06); }
+.gk-control:is(button, .gk-chip):active:not(:disabled) { transform: translateY(1px) scale(.97); filter: brightness(.97); transition-duration: .06s; }
+.gk-widget.interactive { cursor: pointer; transition: transform .22s cubic-bezier(.2, .9, .25, 1.2), box-shadow .22s; }
+.gk-widget.interactive:hover { transform: translateY(-3px); }

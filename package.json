@@ -1,0 +1,63 @@
+{
+  "name": "worldbuilder",
+  "version": "0.1.0",
+  "description": "Offline worldbuilding studio: an interlinked codex, maps, timelines on your own calendars, manuscripts, languages and campaign tools.",
+  "main": "main.js",
+  "productName": "Worldbuilder",
+  "scripts": {
+    "start": "electron .",
+    "check": "node tools/check.js",
+    "test": "node tools/check.js && node tools/lint-ui.js && node --test \"test/unit/*.test.js\" && node test/smoke.js",
+    "unit": "node --test \"test/unit/*.test.js\"",
+    "guard": "node tools/dist-clean.js --check",
+    "dist": "node tools/dist-clean.js",
+    "lint:ui": "node tools/lint-ui.js",
+    "drive": "node tools/drive.js"
+  },
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.nldevelopment.worldbuilder",
+    "productName": "Worldbuilder",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "index.html",
+      "main.js",
+      "preload.js",
+      "src/**",
+      "assets/**",
+      "docs/**",
+      "!**/*.map",
+      "!**/.private/**",
+      "!**/*.local.md",
+      "!**/CLAUDE*.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "Worldbuilder-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Worldbuilder",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

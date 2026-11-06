@@ -1,0 +1,64 @@
+/* App shell: title bar, navigation rail, view. */
+/* #app is zoomed by the UI scale: lengths taken from the window divide the zoom back out, or the shell would be
+   taller and wider than the window (its foot cut off). Use --app-vh / --app-vw for window-sized things inside #app. */
+#app { --app-vh: calc(1vh / var(--ui-zoom, 1)); --app-vw: calc(1vw / var(--ui-zoom, 1)); position: relative; z-index: 1; height: calc(var(--app-vh) * 100); }
+.gk-shell { height: 100%; display: grid; grid-template-rows: 40px minmax(0, 1fr); grid-template-columns: var(--nav-w, 216px) minmax(0, 1fr); }
+/* icon rail: chosen with Collapse (nav-rail), or automatic below the shell's autoRail width unless opened (nav-auto) */
+:is(html.nav-rail, html.nav-auto:not(.nav-open)) .gk-shell { --nav-w: 68px; }
+
+.gk-titlebar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 14px; -webkit-app-region: drag; user-select: none; transition: opacity .2s; }
+.gk-titlebar :is(button, input, select, textarea, a, [contenteditable], .gk-control) { -webkit-app-region: no-drag; }
+html.win-inactive .gk-titlebar { opacity: .72; }
+.gk-titlebar .gk-brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-head); font-weight: var(--fw-head); }
+.gk-titlebar .gk-brand img { width: 20px; height: 20px; }
+.gk-titlebar .gk-crumb { color: var(--muted); font-size: .92em; min-width: 0; white-space: nowrap; overflow: clip; overflow-clip-margin: padding-box var(--ol-room); text-overflow: ellipsis; }
+.gk-titlebar .gk-brand { flex: none; }
+
+.gk-nav { margin: 0 0 var(--gap) var(--gap); padding: 10px 8px; display: flex; flex-direction: column; gap: calc(var(--row-gap) * .5); overflow: auto; }
+.gk-nav-btn { font: inherit; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: var(--radius-sm); padding: 9px 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; text-align: left; white-space: nowrap; }
+.gk-nav-btn .ico { width: 22px; text-align: center; font-size: 1.1em; flex: none; }
+.gk-nav-btn .lbl { min-width: 0; overflow: clip; overflow-clip-margin: padding-box var(--ol-room); text-overflow: ellipsis; }
+.gk-nav-btn:hover { background: var(--hover); color: var(--text); }
+.gk-nav-btn:not(.on):hover { box-shadow: inset 0 0 0 var(--hair) color-mix(in srgb, var(--hl) calc(var(--shine) * 30%), transparent); }
+.gk-nav-btn.on { color: var(--accent-ink); background: var(--accent); box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+.gk-nav .gk-nav-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; }
+:is(html.nav-rail, html.nav-auto:not(.nav-open)) .gk-nav-btn { justify-content: center; padding: 9px 0; }
+:is(html.nav-rail, html.nav-auto:not(.nav-open)) .gk-nav-btn .lbl { display: none; }
+
+.gk-view { overflow: auto; padding: 0 var(--gap) var(--gap); }
+/* pages grow with the text size and with big screens (a 4K window gets room, not a narrow strip) */
+.gk-view > .gk-page { max-width: max(1240px, 66em, min(calc(var(--app-vw) * 78), 1900px)); margin: 0 auto; display: flex; flex-direction: column; gap: var(--gap); }
+.gk-page-head { display: flex; align-items: flex-end; gap: 12px; padding: 6px 4px 2px; }
+.gk-page-head h1 { font-size: 1.7em; }
+.gk-page-head p { margin: 4px 0 0; color: var(--muted); }
+.gk-title-tools { margin-left: auto; }
+
+/* window buttons (frameless windows in both hosts): regular controls, so they follow material, outline and colours */
+.gk-winctl { display: flex; align-items: center; gap: 4px; flex: none; margin-left: 6px; -webkit-app-region: no-drag; }
+.gk-winctl .gk-wc { min-width: calc(var(--ctl-h) * 1.05); font-size: 1em; line-height: 1; }
+.gk-winctl .gk-wc > span { display: inline-block; width: 1em; text-align: center; }
+.gk-winctl .wc-max:not(.on-max) > span { font-size: 1.6em; width: .625em; transform: translateY(-.08em); }   /* □ draws smaller than ❐ in most fonts */
+.gk-winctl .wc-close:is(:hover, :focus-visible):not(:disabled),
+html.prism .gk-winctl .wc-close[data-prism]:is(:hover, :focus-visible) { background-color: var(--bad) !important; border-color: transparent !important; color: #fff; --text: #fff; }
+
+/* the window's own glass edge (src/app/frame.js): the panels' light-aware rim, around the whole window */
+#gk-frame {
+  position: fixed; inset: 0; z-index: 2147483000; pointer-events: none; border-radius: 8px;   /* Windows 11 window corners */
+  --rim-hi: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 95%, 100%)), transparent);
+  --rim-mid: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 30%, 100%)), transparent);
+  --rim-lo: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 22%, 100%)), transparent);
+  --rim-far-w: color-mix(in srgb, #000 calc(min(var(--rim-k) * 38%, 90%)), transparent);
+  box-shadow:
+    inset 0 0 0 1px var(--rim-far-w),                                                           /* a dark outer line: the image stops here */
+    inset 0 0 0 calc(1px + var(--hair)) var(--rim-lo),                                            /* a faint glass ring just inside it */
+    inset calc(var(--hair) * var(--lx, 0)) calc(1px + var(--hair) * var(--ly, 1)) 0 var(--rim-hi), /* the lit edge */
+    inset calc(var(--lx, 0) * 16px) calc(var(--ly, 1) * 16px) 26px -18px var(--rim-mid),          /* soft inner sheen */
+    inset 0 0 14px -8px color-mix(in srgb, #000 calc(var(--rim-k) * 30%), transparent);           /* depth at the rim */
+  transition: opacity .25s;
+}
+html.win-max #gk-frame { display: none; }
+html.win-inactive #gk-frame { opacity: .6; }
+#gk-frame[hidden] { display: none; }
+
+/* button outlines (Appearance → Text & outline): a thin line around every control, from the outline tokens */
+html.btnoutline #app :is(.gk-btn, .gk-chip, .gk-seg, .gk-switch, .gk-input, .gk-wc) { outline: var(--btn-ow, 1.5px) solid var(--btn-oc, var(--line2)); outline-offset: -1px; }

@@ -1,0 +1,128 @@
+/* Checks: tokens only; severities use the status tokens (--bad, --warn) and the accent for notes. Sizes in em. */
+.ck-page { --ck-error: var(--bad); --ck-warn: var(--warn); --ck-info: var(--accent); }
+.ck-tight { margin: 0; }
+.ck-none { padding: 1em .4em; }
+.ck-none a { color: var(--link); }
+
+/* ---------- hero ---------- */
+.ck-hero { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1.25fr) minmax(18em, 1fr); align-items: stretch; }
+@container (max-width: 62em) { .ck-hero { grid-template-columns: minmax(0, 1fr); } }
+.ck-health > .gk-panel-body { justify-content: center; height: 100%; }
+.ck-health-row { display: flex; gap: 1.4em; align-items: center; flex-wrap: wrap; }
+.ck-keys { display: flex; flex-wrap: wrap; align-items: center; gap: .2em; margin-top: .5em; line-height: 1.8; }
+.ck-dial { position: relative; width: 8.6em; height: 8.6em; flex: none; }
+.ck-dial-svg { width: 100%; height: 100%; display: block; }
+.ck-dial-track { fill: none; stroke: var(--well); stroke-width: 9; }
+.ck-dial-fill { fill: none; stroke-width: 9; stroke-linecap: round; transition: stroke-dasharray .6s cubic-bezier(.2, .8, .2, 1); }
+.ck-dial-svg.good .ck-dial-fill { stroke: var(--good); }
+.ck-dial-svg.warn .ck-dial-fill { stroke: var(--warn); }
+.ck-dial-svg.bad .ck-dial-fill { stroke: var(--bad); }
+html.no-motion .ck-dial-fill { transition: none; }
+.ck-dial-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.ck-dial-num b { font-family: var(--font-head); font-size: 2.5em; font-variant-numeric: tabular-nums; }
+.ck-dial-num span { font-size: .74em; color: var(--muted); margin-top: .25em; }
+.ck-health-main { flex: 1; min-width: 16em; display: flex; flex-direction: column; gap: .45em; }
+.ck-verdict { font-family: var(--font-head); font-size: 1.4em; font-weight: var(--fw-head); }
+.ck-counts { display: flex; gap: .4em; flex-wrap: wrap; margin-top: .15em; }
+.ck-count { display: inline-flex; align-items: center; gap: .4em; padding: .35em .75em; border: 0; border-radius: 999px; font: inherit; color: var(--text); cursor: pointer; background: var(--well); box-shadow: inset 0 0 0 var(--hair) var(--line); }
+.ck-count b { font-variant-numeric: tabular-nums; font-size: 1.05em; }
+.ck-count span:last-child { color: var(--muted); font-size: .9em; }
+.ck-count:hover { background: var(--hover); }
+.ck-count.zero { opacity: .55; }
+.ck-count.sev-error .ck-count-ico { color: var(--ck-error); }
+.ck-count.sev-warn .ck-count-ico { color: var(--ck-warn); }
+.ck-count.sev-info .ck-count-ico { color: var(--ck-info); }
+.ck-count.sev-ignored .ck-count-ico { color: var(--muted); }
+.ck-count.on { background: var(--sel); box-shadow: inset 0 0 0 calc(var(--hair) * 2) var(--focus); }
+.ck-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ck-actions { display: flex; gap: .4em; flex-wrap: wrap; margin-top: .3em; }
+
+.ck-bycheck > .gk-panel-body { padding-top: .4em; }
+.ck-catlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(13em, 1fr)); gap: .15em .4em; }
+.ck-cat { display: flex; align-items: center; gap: .5em; padding: .32em .5em; border: 0; border-radius: calc(var(--radius) * .45); background: transparent; color: var(--text); font: inherit; font-size: .92em; text-align: left; cursor: pointer; min-width: 0; }
+.ck-cat:hover { background: var(--hover); }
+.ck-cat.on { background: var(--sel); }
+.ck-cat:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ck-cat-ico { width: 1.3em; text-align: center; color: var(--muted); flex: none; }
+.ck-cat-lbl { flex: 1; min-width: 0; }
+.ck-cat-n { font-size: .82em; font-weight: 700; min-width: 1.9em; padding: .05em .45em; border-radius: 999px; text-align: center; font-variant-numeric: tabular-nums; background: var(--well); color: var(--muted); }
+.ck-cat.tone-error .ck-cat-n { background: color-mix(in srgb, var(--ck-error) 26%, transparent); color: var(--text); }
+.ck-cat.tone-warn .ck-cat-n { background: color-mix(in srgb, var(--ck-warn) 26%, transparent); color: var(--text); }
+.ck-cat.tone-info .ck-cat-n { background: color-mix(in srgb, var(--ck-info) 20%, transparent); color: var(--text); }
+.ck-cat.tone-pass .ck-cat-n { color: var(--good); background: transparent; }
+.ck-cat.tone-pass .ck-cat-lbl { color: var(--muted); }
+.ck-cat.tone-off { opacity: .5; }
+
+/* ---------- filter bar ---------- */
+.ck-bar { display: flex; align-items: center; gap: .55em; flex-wrap: wrap; }
+.ck-bar .wb-search { flex: 1 1 14em; max-width: 24em; }
+.ck-filterchip { display: inline-flex; align-items: center; gap: .35em; padding: .2em .4em .2em .7em; border-radius: 999px; background: var(--sel); font-size: .9em; }
+
+/* ---------- groups & issues ---------- */
+.ck-groups { display: flex; flex-direction: column; gap: calc(var(--gap) * .8); transition: opacity .2s; }
+.ck-groups.ck-busy { opacity: .55; }
+.ck-group > .gk-panel-body, .ck-ignoredpanel > .gk-panel-body { padding: calc(var(--pad) * .55) calc(var(--pad) * .7); gap: .35em; }
+.ck-group-head { display: flex; align-items: center; gap: .6em; width: 100%; padding: .35em .3em; border: 0; border-radius: calc(var(--radius) * .5); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.ck-group-head:hover { background: var(--hover); }
+.ck-group-head:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ck-twisty { width: 1em; color: var(--faint); flex: none; }
+.ck-group-ico { width: 1.9em; height: 1.9em; display: grid; place-items: center; border-radius: .55em; background: var(--well); flex: none; }
+.ck-group-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ck-group-name b { font-size: 1.04em; }
+.ck-group-counts { display: flex; gap: .3em; flex-wrap: wrap; justify-content: flex-end; }
+.ck-pill { font-size: .78em; font-weight: 700; padding: .12em .6em; border-radius: 999px; background: var(--well); color: var(--muted); white-space: nowrap; }
+.ck-pill.sev-error { background: color-mix(in srgb, var(--ck-error) 24%, transparent); color: var(--text); }
+.ck-pill.sev-warn { background: color-mix(in srgb, var(--ck-warn) 24%, transparent); color: var(--text); }
+.ck-pill.sev-info { background: color-mix(in srgb, var(--ck-info) 18%, transparent); color: var(--text); }
+.ck-pill.sev-pass { color: var(--good); }
+.ck-group-body { display: flex; flex-direction: column; gap: .35em; padding: .1em 0 .2em; }
+
+.ck-issue { --sev: var(--ck-info); display: grid; grid-template-columns: 2em minmax(0, 1fr) auto; gap: .2em .7em; align-items: start; padding: .6em .7em .6em .55em; border-radius: calc(var(--radius) * .55); background: color-mix(in srgb, var(--sev) 6%, var(--well)); box-shadow: inset .22em 0 0 var(--sev); outline: none; }
+.ck-issue.sev-error { --sev: var(--ck-error); }
+.ck-issue.sev-warn { --sev: var(--ck-warn); }
+.ck-issue:hover { background: color-mix(in srgb, var(--sev) 10%, var(--well)); }
+.ck-issue:focus-visible { box-shadow: inset .22em 0 0 var(--sev), inset 0 0 0 calc(var(--hair) * 2) var(--focus); }
+.ck-issue.flash { animation: ckFlash 2.2s ease-out; }
+@keyframes ckFlash { 0%, 40% { box-shadow: inset .22em 0 0 var(--sev), 0 0 0 .2em color-mix(in srgb, var(--accent) 60%, transparent); } }
+html.no-motion .ck-issue.flash { animation: none; box-shadow: inset .22em 0 0 var(--sev), 0 0 0 .15em var(--accent); }
+.ck-issue-sev { width: 1.7em; height: 1.7em; display: grid; place-items: center; border-radius: 50%; color: var(--sev); background: color-mix(in srgb, var(--sev) 16%, transparent); font-size: .95em; margin-top: .05em; }
+.ck-issue-main { min-width: 0; display: flex; flex-direction: column; gap: .25em; }
+.ck-issue-title { font-weight: 650; line-height: 1.35; }
+.ck-issue-detail { color: var(--muted); font-size: .92em; line-height: var(--lh); max-width: 62em; }
+.ck-chips { margin-top: .15em; }
+.ck-issue-acts { display: flex; align-items: center; gap: .2em; flex-wrap: wrap; justify-content: flex-end; max-width: 22em; }
+@container (max-width: 52em) { .ck-issue { grid-template-columns: 2em minmax(0, 1fr); } .ck-issue-acts { grid-column: 2; justify-content: flex-start; max-width: none; } }
+.ck-more { display: flex; justify-content: center; padding-top: .2em; }
+
+/* ---------- marked as intended ---------- */
+.ck-marks { display: flex; flex-direction: column; gap: .35em; }
+.ck-mark { display: flex; gap: .7em; align-items: flex-start; padding: .55em .7em; border-radius: calc(var(--radius) * .5); background: var(--well); }
+.ck-mark.resolved { opacity: .75; }
+.ck-mark-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .3em; }
+.ck-mark-title { display: flex; gap: .5em; align-items: baseline; font-weight: 600; }
+.ck-mark-sev { color: var(--muted); }
+.ck-note { font-size: .92em; }
+
+/* ---------- popovers & dialogs ---------- */
+.ck-ignore { display: flex; flex-direction: column; gap: .5em; padding: .5em; }
+.ck-ignore-foot { justify-content: flex-end; }
+.ck-settings { display: flex; flex-direction: column; gap: .5em; padding: .5em; }
+.ck-settings-list { display: flex; flex-direction: column; gap: .1em; max-height: min(24em, 52vh); overflow: auto; }
+.ck-setrow { display: flex; align-items: center; gap: .55em; padding: .25em .3em; border-radius: calc(var(--radius) * .4); cursor: pointer; }
+.ck-setrow:hover { background: var(--hover); }
+.ck-age { width: 5em; text-align: right; }
+.ck-datepick { display: flex; flex-direction: column; gap: .5em; min-width: 20em; }
+
+.gk-dialog.ck-walkdlg { width: min(42em, 94vw); }
+.ck-walk { display: flex; flex-direction: column; gap: .55em; min-height: 13em; }
+.ck-walk-top { display: flex; align-items: center; gap: .6em; }
+.ck-sev { font-size: .82em; font-weight: 700; padding: .15em .6em; border-radius: 999px; }
+.ck-sev.bad { background: color-mix(in srgb, var(--bad) 24%, transparent); }
+.ck-sev.warn { background: color-mix(in srgb, var(--warn) 24%, transparent); }
+.ck-sev.info { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.ck-walk-bar { height: .3em; border-radius: 999px; background: var(--well); overflow: clip; }
+.ck-walk-bar > i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .3s; }
+.ck-walk-title { margin: .2em 0 0; font-size: 1.2em; line-height: 1.35; }
+.ck-walk-detail { margin: 0; color: var(--muted); line-height: var(--lh); }
+.ck-walk-fixes { display: flex; gap: .4em; flex-wrap: wrap; margin-top: .3em; }
+.ck-walkdlg .gk-panel-foot { align-items: center; flex-wrap: wrap; }

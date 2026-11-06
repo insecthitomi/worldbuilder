@@ -1,0 +1,41 @@
+/* Guide: purpose chips, recipe cards, every screen, shortcuts */
+.gd-page { display: grid; gap: 1.1em; align-content: start; }
+.gd-hero { display: grid; gap: .8em; }
+.gd-searchrow { position: relative; display: flex; align-items: center; }
+.gd-search-ico { position: absolute; left: .85em; font-size: 1.15em; color: var(--muted); pointer-events: none; }
+.gd-search.gk-input { width: 100%; font-size: 1.15em; padding: .7em .9em .7em 2.4em; border-radius: calc(var(--radius) * .8); }
+.gd-purposes { gap: .4em; }
+.gd-purpose { display: inline-flex; align-items: center; gap: .45em; padding: .38em .75em; border-radius: 999px; border: var(--hair) solid var(--line); background: var(--well); color: var(--text); font: inherit; font-size: .92em; cursor: pointer; }
+.gd-purpose:hover { background: var(--hover); }
+.gd-purpose.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.gd-purpose-ico { width: 1.1em; text-align: center; }
+.gd-count { font-size: .8em; opacity: .7; font-variant-numeric: tabular-nums; }
+.gd-progress { display: flex; align-items: center; gap: .8em; }
+.gd-bar { flex: 0 0 12em; height: .45em; border-radius: 999px; background: var(--well); overflow: clip; }
+.gd-bar > span { display: block; height: 100%; background: var(--good); border-radius: inherit; transition: width .3s ease; }
+
+.gd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19em), 1fr)); gap: .8em; }
+.gd-card { display: flex; flex-direction: column; gap: .5em; padding: .95em 1em .85em; outline: none; }
+.gd-card.tried { box-shadow: inset .2em 0 0 color-mix(in oklab, var(--good) 70%, transparent); }
+.gd-card.flash { animation: gd-flash 2s ease-out; }
+@keyframes gd-flash { 0%, 35% { box-shadow: 0 0 0 .3em color-mix(in oklab, var(--accent) 45%, transparent); } 100% { box-shadow: 0 0 0 .3em transparent; } }
+.gd-card-head { display: flex; align-items: flex-start; gap: .6em; }
+.gd-card-head h3 { margin: 0; font-size: 1.02em; line-height: 1.3; flex: 1; }
+.gd-ico { flex: none; width: 1.9em; height: 1.9em; display: grid; place-items: center; border-radius: .55em; background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--text); font-size: .95em; }
+.gd-tick { color: var(--good); font-weight: 700; }
+.gd-why { margin: 0; color: var(--muted); font-size: .9em; line-height: 1.45; }
+.gd-steps { margin: 0; padding-left: 1.3em; display: grid; gap: .2em; font-size: .88em; line-height: 1.4; }
+.gd-steps li::marker { color: var(--faint); font-variant-numeric: tabular-nums; }
+.gd-card-foot { display: flex; align-items: center; gap: .5em; margin-top: auto; padding-top: .35em; }
+.gd-where { display: inline-flex; align-items: center; gap: .4em; border: 0; background: none; color: var(--muted); font: inherit; font-size: .85em; padding: .2em .4em; border-radius: .4em; cursor: pointer; }
+.gd-where:hover { background: var(--hover); color: var(--text); }
+.gd-empty { padding: 1.4em; text-align: center; }
+
+.gd-lower { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: .9em; align-items: start; }
+@container (max-width: 62em) { .gd-lower { grid-template-columns: minmax(0, 1fr); } }
+.gd-screen-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17em), 1fr)); gap: .25em; }
+.gd-screen { display: flex; align-items: flex-start; gap: .65em; text-align: left; border: 0; background: none; color: var(--text); font: inherit; padding: .5em .55em; border-radius: .55em; cursor: pointer; }
+.gd-screen:hover { background: var(--hover); }
+.gd-screen-ico { flex: none; width: 1.6em; text-align: center; font-size: 1.1em; }
+.gd-screen-text { display: grid; gap: .1em; flex: 1; min-width: 0; }
+.gd-screen .wb-kbd { flex: none; align-self: center; }

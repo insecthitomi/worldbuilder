@@ -1,0 +1,215 @@
+/* Glass Kit tokens. The engine overwrites these on <html> from the user's settings.
+   Every colour a user can change is a token here; the derived ones re-resolve on each surface (see below) and
+   the engine sets a `--x-user` override only when the user picked a colour, so nothing changes until they do. */
+:root {
+  --bg: #0b1622;
+  --text: #eef6ff;
+  --accent: #6fd0ff;
+  --accent-ink: #04131f;
+  --good: #52c98f;
+  --bad: #f06f86;
+  --warn: #f3b25a;
+  --link: var(--accent);
+  --focus: var(--accent);
+  --sel: color-mix(in srgb, var(--accent) 30%, transparent);   /* text selection and selected rows */
+  --now: var(--bad);                                             /* current-time line */
+  --on-fill: #10161f;                                            /* ink on saturated good / bad / warn fills (engine: auto contrast) */
+
+  /* glass: tint colour x tint strength (0 = clear) and milkiness are separate settings; --tint / --glass-a are
+     the resulting fill (hue + opacity) every glass surface paints, --glass-fill the ready colour */
+  --tint-color: #ffffff;
+  --tint-a: 0;
+  --milk-a: 0;
+  --tint: #ffffff;
+  --glass-a: 0;
+  --glass-fill: color-mix(in srgb, var(--tint) calc(var(--glass-a) * 100%), transparent);
+  --glass-blur: 0px;
+  --shine: .7;
+  --light: #ffffff;
+  --light-angle: 180deg;
+  --light-reach: 55%;
+  --lip-x: 0px;
+  --lip-y: 1.5px;
+  --drop-x: 0px;
+  --drop-y: 22px;
+  --ui-zoom: 1;                                                  /* the UI scale in use on #app (set by the engine) */
+  --hair: 1px;                                                   /* one device pixel (set by the engine) */
+
+  --solid-panel: #15263a;
+  --solid-widget: #1c3149;
+  --solid-control: #24405f;
+  --solid-panel-ink: #eef6ff;
+  --solid-widget-ink: #eef6ff;
+  --solid-control-ink: #eef6ff;
+
+  --font-ui: "Segoe UI", "Trebuchet MS", Verdana, sans-serif;
+  --font-head: var(--font-ui);
+  --font-mono: Consolas, "Cascadia Mono", "Courier New", monospace;
+  --fs: 14px;
+  --lh: 1.5;
+  --ls: 0em;
+  --fw-head: 700;
+
+  --radius: 16px;
+  --radius-sm: calc(var(--radius) * .62);
+  --gap: 14px;                                                   /* between panels and sections */
+  --pad: 16px;                                                   /* inside panels */
+  --row-gap: calc(var(--gap) * .57);                             /* between list rows and items (8px at 14) */
+  --ctl-h: calc(var(--fs) * 2.43);                               /* control height (34px at 14px text) */
+  --ctl-px: var(--fs);                                           /* control side padding (14px at 14px text) */
+
+  --tbg: transparent;
+  /* text outline: radius --olr, blur --olb, colour --olc (the engine keeps it contrasting with --text);
+     --ol-room = how far it reaches outside the glyphs */
+  --olr: 0em;
+  --olb: 0em;
+  --ol-glow: 0em;
+  --olw: 0em;
+  --olc: #000;
+  --ol-a: 1;
+  --ol-room: 0px;
+  --ol-shadow: none;
+
+  /* derived: these re-resolve on every surface so they follow that surface's --text */
+  /* secondary and faint text are solid (the text pulled toward mid-grey), never see-through, so they read the same on any wallpaper */
+  --muted: var(--muted-user, oklch(from var(--text) calc(l + (.5 - l) * .36) calc(c * .8) h));
+  --faint: var(--faint-user, oklch(from var(--text) calc(l + (.5 - l) * .6) calc(c * .6) h));
+  --line: var(--line-user, color-mix(in srgb, var(--text) 14%, transparent));
+  --line2: color-mix(in srgb, var(--line-user, var(--text)) 26%, transparent);
+  --hover: var(--hover-user, color-mix(in srgb, var(--text) 8%, transparent));
+  --well: var(--well-user, color-mix(in srgb, var(--text) 6%, transparent));
+  --scroll: var(--scroll-user, color-mix(in srgb, var(--text) 25%, transparent));
+  /* glass highlight (rim line, sheen, bubble shine): its own colour, by default derived from the light */
+  --hl: var(--hl-user, color-mix(in srgb, color-mix(in srgb, var(--tint-color) calc(var(--tint-a) * 50%), var(--light)) 30%, #fff));
+  --sh: color-mix(in srgb, var(--accent) 28%, #000);
+  --lip: color-mix(in srgb, var(--hl) calc(var(--shine) * 100%), transparent);
+  --lip-soft: color-mix(in srgb, var(--hl) calc(var(--shine) * 55%), transparent);
+  --caustic: color-mix(in srgb, var(--accent) calc(var(--shine) * 42%), transparent);
+  /* glass rim: bright where the light hits, faint on the far side; hover/selected raise --rim-k */
+  --rim-k: 1;
+  --rim-hi: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 85%, 100%)), transparent);
+  --rim-mid: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 26%, 100%)), transparent);
+  --rim-lo: color-mix(in srgb, var(--hl) calc(min(var(--shine) * var(--rim-k) * 12%, 100%)), transparent);
+  --rim-far: color-mix(in srgb, #000 calc(var(--shine) * 14%), transparent);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--fs)/var(--lh) var(--font-ui);
+  letter-spacing: var(--ls);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-head); line-height: 1.2; margin: 0; }
+code, pre, kbd, .mono { font-family: var(--font-mono); }
+:where(#app) :where(a[href]) { color: var(--link); }
+::selection { background: var(--sel); }
+/* glass scrollbars: a clear, tinted thumb with a lit edge and a fine rim (the panels' light), in a faint inset groove */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-thumb {
+  border-radius: 99px; border: 2px solid transparent; background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--scroll) 75%, transparent);
+  background-image:
+    linear-gradient(90deg, color-mix(in srgb, var(--hl) calc(var(--shine) * 75%), transparent) 0 22%, transparent 50%, color-mix(in srgb, #000 14%, transparent) 100%),
+    linear-gradient(180deg, color-mix(in srgb, #fff 22%, transparent), transparent 45%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hl) calc(var(--shine) * 55%), transparent), inset 1px 1px 1px color-mix(in srgb, #fff 35%, transparent);
+}
+::-webkit-scrollbar-thumb:horizontal {
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--hl) calc(var(--shine) * 75%), transparent) 0 22%, transparent 50%, color-mix(in srgb, #000 14%, transparent) 100%),
+    linear-gradient(90deg, color-mix(in srgb, #fff 22%, transparent), transparent 45%);
+}
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--scroll), var(--text) 30%); }
+::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--scroll), var(--accent) 45%); }
+::-webkit-scrollbar-track { background: transparent; border-radius: 99px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent), inset 0 1px 3px color-mix(in srgb, #000 12%, transparent); margin: 3px; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* every surface re-derives the colours that depend on its own --text */
+.gk-panel, .gk-widget, .gk-control, .gk-text {
+  --muted: var(--muted-user, oklch(from var(--text) calc(l + (.5 - l) * .36) calc(c * .8) h));
+  --faint: var(--faint-user, oklch(from var(--text) calc(l + (.5 - l) * .6) calc(c * .6) h));
+  --line: var(--line-user, color-mix(in srgb, var(--text) 14%, transparent));
+  --line2: color-mix(in srgb, var(--line-user, var(--text)) 26%, transparent);
+  --hover: var(--hover-user, color-mix(in srgb, var(--text) 8%, transparent));
+  --well: var(--well-user, color-mix(in srgb, var(--text) 6%, transparent));
+  --scroll: var(--scroll-user, color-mix(in srgb, var(--text) 25%, transparent));
+  color: var(--text);
+}
+
+/* backdrop layer: background, dim (and the bubbles add-on's layer) */
+#gk-backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+#gk-backdrop .gk-bg { position: absolute; inset: calc(var(--bg-blur, 0px) * -2); background: var(--bg-layer, var(--bg)); filter: var(--bg-filter, none); }   /* no filter at all when unblurred */
+#gk-backdrop video.gk-bg { width: calc(100% + var(--bg-blur, 0px) * 4); height: calc(100% + var(--bg-blur, 0px) * 4); object-fit: var(--bg-vfit, cover); }
+#gk-backdrop .gk-dim { position: absolute; inset: 0; background: var(--bg-dim, transparent); }
+/* glow and haze without Prism (engine.js light()): glow = a blurred, thresholded copy of the wallpaper, screened
+   over it (warmed by halation); haze = a milky veil of the light colour that lifts the shadows. Prism draws its own
+   (bloom from the pyramid, diffusion, wallpaper light), so these layers step aside there. */
+#gk-backdrop .gk-glow { position: absolute; inset: calc(var(--bg-blur, 0px) * -2); background: var(--bg-layer, var(--bg));
+  filter: var(--glow-f, none) blur(var(--glow-r, 20px)) brightness(1.6); mix-blend-mode: screen; opacity: var(--glow-a, 0); pointer-events: none; }
+#gk-backdrop .gk-haze { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: calc(var(--haze, 0) * .42);
+  background: radial-gradient(130% 95% at 50% 15%, color-mix(in srgb, var(--light, #fff) 62%, transparent), color-mix(in srgb, var(--light, #fff) 30%, transparent)); }
+html.prism #gk-backdrop :is(.gk-glow, .gk-haze) { display: none; }
+/* bubbles are an add-on (src/addons/fx-bubbles): their layer and look live there */
+/* Prism: the backdrop lives inside the GPU canvas (and draws any #gk-bubbles .bub as glass ball lenses) */
+#gk-prism { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; display: block; }
+#gk-prism > #gk-backdrop { position: relative; inset: auto; width: 100vw; height: 100vh; }
+html.no-motion * { transition: none !important; animation-duration: 0s !important; }
+
+/* live sliders in Quick start: compact rows under their section */
+.gk-st-live { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.gk-st-undo:disabled { opacity: .45; cursor: default; }
+
+/* ---------- text outline ----------
+   One ring of 24 text-shadows (16 on the outline radius, 8 at half of it): round joins and an even contour at
+   any size and in every font. The inner ring matters for thick outlines: without it a thin stroke shows a gap
+   between the letter and its contour.
+   crisp = no blur, smooth = a soft edge, glow = a halo.
+   The values are var()s resolved on each element, so a surface can re-colour the outline or switch it off. */
+html.txt-ring #app { text-rendering: optimizeLegibility; }
+html.txt-ring #app, html.txt-ring #app * {
+  -webkit-text-stroke: 0;
+  text-shadow:
+    calc(var(--olr) * 1) 0px var(--olb) var(--olc),
+    calc(var(--olr) * 0.9239) calc(var(--olr) * 0.3827) var(--olb) var(--olc),
+    calc(var(--olr) * 0.7071) calc(var(--olr) * 0.7071) var(--olb) var(--olc),
+    calc(var(--olr) * 0.3827) calc(var(--olr) * 0.9239) var(--olb) var(--olc),
+    0px calc(var(--olr) * 1) var(--olb) var(--olc),
+    calc(var(--olr) * -0.3827) calc(var(--olr) * 0.9239) var(--olb) var(--olc),
+    calc(var(--olr) * -0.7071) calc(var(--olr) * 0.7071) var(--olb) var(--olc),
+    calc(var(--olr) * -0.9239) calc(var(--olr) * 0.3827) var(--olb) var(--olc),
+    calc(var(--olr) * -1) 0px var(--olb) var(--olc),
+    calc(var(--olr) * -0.9239) calc(var(--olr) * -0.3827) var(--olb) var(--olc),
+    calc(var(--olr) * -0.7071) calc(var(--olr) * -0.7071) var(--olb) var(--olc),
+    calc(var(--olr) * -0.3827) calc(var(--olr) * -0.9239) var(--olb) var(--olc),
+    0px calc(var(--olr) * -1) var(--olb) var(--olc),
+    calc(var(--olr) * 0.3827) calc(var(--olr) * -0.9239) var(--olb) var(--olc),
+    calc(var(--olr) * 0.7071) calc(var(--olr) * -0.7071) var(--olb) var(--olc),
+    calc(var(--olr) * 0.9239) calc(var(--olr) * -0.3827) var(--olb) var(--olc),
+    calc(var(--olr) * 0.4619) calc(var(--olr) * 0.1913) var(--olb) var(--olc),
+    calc(var(--olr) * 0.1913) calc(var(--olr) * 0.4619) var(--olb) var(--olc),
+    calc(var(--olr) * -0.1913) calc(var(--olr) * 0.4619) var(--olb) var(--olc),
+    calc(var(--olr) * -0.4619) calc(var(--olr) * 0.1913) var(--olb) var(--olc),
+    calc(var(--olr) * -0.4619) calc(var(--olr) * -0.1913) var(--olb) var(--olc),
+    calc(var(--olr) * -0.1913) calc(var(--olr) * -0.4619) var(--olb) var(--olc),
+    calc(var(--olr) * 0.1913) calc(var(--olr) * -0.4619) var(--olb) var(--olc),
+    calc(var(--olr) * 0.4619) calc(var(--olr) * -0.1913) var(--olb) var(--olc);
+}
+html.txt-ring[data-ol="glow"] #app, html.txt-ring[data-ol="glow"] #app * {
+  text-shadow: 0 0 var(--ol-glow) var(--olc), 0 0 calc(var(--ol-glow) * 2) var(--olc), 0 0 calc(var(--ol-glow) * 3.5) var(--olc);
+}
+html.txt-ring #app :is(input, textarea, select, code, pre, kbd) { text-shadow: none; }
+/* text on accent fills (selected / on / primary) has its own contrasting ink: no outline there */
+html.txt-ring #app :is(.primary, .is-accent, .gk-seg > button.on, .gk-nav-btn.on, .gk-switch.on, [data-prism="indicator"], [data-prism-accent="fill"]) {
+  --olr: 0em; --olb: 0em; --ol-glow: 0em; --olc: transparent; --ol-room: 0px;
+}
+/* solid surfaces carry their own ink: the outline takes the opposite tone of that ink (never dark on dark) */
+html[data-mat-panel="solid"] .gk-panel, html[data-mat-widget="solid"] .gk-widget, html[data-mat-control="solid"] .gk-control, html body :is(.gk-panel, .gk-widget)[data-mat="solid"] {
+  --olc: oklch(from var(--text) clamp(0, (.62 - l) * 1000, 1) 0 0 / var(--ol-a));
+}
+/* text that clips with an ellipsis keeps its outline: the clip reaches --ol-room past the box */
+:is(.gk-ellipsis, .gk-item-title, .gk-nav-btn .lbl, .gk-titlebar .gk-crumb) { white-space: nowrap; text-overflow: ellipsis; overflow: clip; overflow-clip-margin: padding-box var(--ol-room); min-width: 0; }
+
+html.tbg :is(.gk-text, .gk-page-head p) { background: var(--tbg); border-radius: var(--radius-sm); padding: .3em .6em; width: fit-content; max-width: 100%; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
