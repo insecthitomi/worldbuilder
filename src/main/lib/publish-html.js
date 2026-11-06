@@ -93,6 +93,7 @@ function fieldHtml(def, v, o = {}) {
     case 'number': return esc(Number(v).toLocaleString('en-US')) + (def.unit && def.unit !== 'cents' ? ' ' + esc(def.unit) : '');
     case 'longtext': return paragraphs(v);
     case 'dice': return '<code>' + esc(v) + '</code>';
+    case 'axis': case 'attrs': return esc(F.asText(def, v));
     default: return esc(v);
   }
 }

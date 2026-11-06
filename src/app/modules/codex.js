@@ -15,10 +15,18 @@
     subtitle: 'Every character, place, faction and idea — linked.',
     async mount(page, ctx) {
       if (!WB.worldId) { page.appendChild(WB.ui.empty({ icon: '❖', title: 'No world yet', text: 'Create a world to start your codex.', actions: [ui.button({ label: 'Create a world', kind: 'primary', onClick: () => WB.newWorld() })] })); return; }
-      const st = await WB.store(ctx, { source: { kind: 'all' }, sort: 'position', view: 'tree', collapsed: [], sources: true, last: null, table: false, tableHidden: {} });
+      const st = await WB.store(ctx, { source: { kind: 'all' }, sort: 'position', view: 'tree', collapsed: [], collapsedBy: {}, groupBy: {}, sources: true, last: null, table: false, tableHidden: {} });
       const S = st.get();
+      // older saved state: the table was a switch of its own, now it is one of the four views
+      if (S.table && S.view !== 'table' && S.view !== 'cards') st.patch({ view: 'table' });
+      if (!['tree', 'list', 'cards', 'table'].includes(st.get().view)) st.patch({ view: 'tree' });
+      const wide = () => st.get().view === 'table' || st.get().view === 'cards';
       const params = WB.params('codex') || {};
       let entries = [], selected = new Set(), current = null, q = '', destroyed = false, lastSave = 0, more = 400;
+      let counts = {}, ctxIds = new Set(), dragIds = [], pendingFocus = null, anchor = null;
+      // expansion state is remembered per world (everything open until you close it)
+      const getCollapsed = () => new Set((st.get().collapsedBy || {})[WB.worldId] || []);
+      const setCollapsed = set => st.patch({ collapsedBy: Object.assign({}, st.get().collapsedBy, { [WB.worldId]: [...set] }) });
       const offs = [];
       page.classList.add('cx-page');
 
@@ -27,10 +35,20 @@
       const listPane = h('section.cx-list.gk-panel');
       const pagePane = h('section.cx-entry');
       const tablePane = h('section.cx-table.gk-panel', { dataset: { nativeScroll: '' } });
-      const root = h('div.cx', { class: (S.sources ? '' : 'no-sources') + (S.table ? ' table-mode' : '') }, [srcPane, listPane, pagePane, tablePane]);
+      const root = h('div.cx', { class: (S.sources ? '' : 'no-sources') + (wide() ? ' table-mode' : '') }, [srcPane, listPane, pagePane, tablePane]);
       page.appendChild(root);
       let tableSort = { key: null, dir: 1 };
-      const setTable = on => { st.patch({ table: on }); root.classList.toggle('table-mode', on); if (on) paintTable(); else { GK.clear(tablePane); paintList(); } };
+      // the four ways to look at the same entries: Tree / List stay in the narrow list, Cards / Table fill the page
+      const setView = v => {
+        st.patch({ view: v, table: v === 'table' || v === 'cards' });
+        paintViewSwitch();
+        root.classList.toggle('table-mode', wide());
+        if (wide()) paintTable(); else { GK.clear(tablePane); paintList(); }
+      };
+      const setTable = on => setView(on ? 'table' : 'tree');
+      const viewHolder = h('span.cx-viewsw');
+      const paintViewSwitch = () => { GK.clear(viewHolder); viewHolder.appendChild(viewSwitch()); };
+      const viewSwitch = () => ui.segmented({ value: st.get().view, options: [['tree', 'Tree', 'Nested by what is inside what'], ['list', 'List', 'Flat list'], ['cards', 'Cards', 'A card for each entry'], ['table', 'Table', 'Fields as columns, editable in place']], onChange: setView });
 
       /* ---------------- sources ---------------- */
       async function paintSources() {
@@ -81,7 +99,7 @@
       const search = WB.ui.search({ placeholder: 'Filter  (Ctrl+F)', value: q, onInput: v => { q = v; more = 400; loadListD(); } });
       const sortSel = ui.select({ value: S.sort, options: [['position', 'Manual order'], ['title', 'Name'], ['updated', 'Last edited'], ['created', 'Newest'], ['start', 'World date'], ['words', 'Longest']], onChange: v => { st.patch({ sort: v }); loadList(); } });
       sortSel.title = 'Sort';
-      const viewSeg = ui.segmented({ value: S.view, options: [['tree', 'Tree', 'Nested by parent'], ['list', 'List', 'Flat list']], onChange: v => { st.patch({ view: v }); paintList(); } });
+      paintViewSwitch();
       const listHead = h('div.cx-list-head');
       const listBody = h('div.cx-rows', { role: 'tree' });
       const bulkBar = h('div.cx-bulk');
@@ -92,11 +110,34 @@
           ui.button({ label: 'New', icon: '＋', small: true, kind: 'primary', title: 'New entry (Ctrl+N)', onClick: () => newEntry() }),
           ui.button({ icon: '▾', small: true, kind: 'primary', title: 'More ways to add', onClick: ev => newMenu(ev.currentTarget) }),
         ]),
-      ]), h('div.cx-list-tools.second', [sortSel, viewSeg, ui.button({ icon: '⊞', small: true, kind: 'ghost', title: 'Table view: every entry with its fields, editable in place', onClick: () => setTable(true) })]), listHead, listBody, bulkBar);
+      ]), h('div.cx-list-tools.second', [viewHolder]), h('div.cx-list-tools.second', [sortSel, ui.button({ icon: '⋯', small: true, kind: 'ghost', title: 'Tree options: expand, collapse, nesting rules', onClick: ev => treeMenu(ev.currentTarget) })]), listHead, listBody, bulkBar,
+      h('div.cx-hints.gk-tiny.gk-faint'));
       WB.ui.listKeys(listBody);
+      const hintsEl = listPane.querySelector('.cx-hints');
+      function treeMenu(anchor) {
+        const allow = !(WB.world && WB.world.settings && WB.world.settings.allowAnyNesting === false);
+        WB.ui.menu([
+          { label: 'Expand all', icon: '▾', onClick: () => { setCollapsed(new Set()); paintList(); } },
+          { label: 'Collapse all', icon: '▸', onClick: () => { setCollapsed(new Set(entries.filter(e => entries.some(c => c.parentId === e.id)).map(e => e.id))); paintList(); } },
+          { label: 'Expand to the open entry', icon: '⌖', disabled: !current, onClick: () => { reveal(current.id); paintList(); } },
+          '-',
+          { label: 'Select all shown', icon: '☑', kbd: 'Ctrl+A', onClick: () => { entries.forEach(e => selected.add(e.id)); paintList(); } },
+          '-',
+          { label: 'Any entry can sit inside any other', icon: allow ? '✓' : '', checked: allow, hint: 'Off: only types that allow it (the type editor) nest; moving anything else asks first', onClick: async () => {
+            try { await WB.api('worlds.update', WB.worldId, { settings: { allowAnyNesting: !allow } }); if (WB.world) WB.world.settings = Object.assign({}, WB.world.settings, { allowAnyNesting: !allow }); ui.toast(!allow ? 'Anything can nest in anything' : 'Nesting follows each type’s rules (you can still override)', '⇲'); } catch (err) { WB.fail(err); }
+          } },
+        ], anchor);
+      }
+      const reveal = id => {
+        const c = getCollapsed(); let p = (WB.liteOf(id) || {}).parentId, g = 0, ch = false;
+        while (p && g++ < 60) { if (c.delete(p)) ch = true; p = (WB.liteOf(p) || {}).parentId; }
+        if (ch) setCollapsed(c);
+        return ch;
+      };
       function newMenu(anchor) {
         WB.ui.menu([
           { label: 'New entry…', icon: '＋', kbd: 'Ctrl+N', onClick: () => newEntry() },
+          current ? { label: 'New inside “' + current.title + '”…', icon: '↳', onClick: () => newEntry({ parentId: current.id, type: ((WB.typeOf(current) || {}).childTypes || [])[0] }) } : null,
           { label: 'Add many at once…', icon: '≡', hint: 'Paste a list of names, one per line', onClick: addMany },
           { label: 'Quick capture', icon: '✚', kbd: 'Ctrl+Shift+N', onClick: () => WB.capture() },
           { label: 'Table view', icon: '⊞', onClick: () => setTable(true) },
@@ -123,14 +164,16 @@
         const src = st.get().source;
         const t = src.kind === 'type' ? WB.types.get(src.id) : null;
         const rows = entries.length ? await WB.api('entries.withFields', WB.worldId, { ids: entries.map(e => e.id) }).catch(() => []) : [];
-        if (destroyed || !st.get().table) return;
+        if (destroyed || !wide()) return;
+        const cards = st.get().view === 'cards';
         const ro = WB.share;
         const defs = t ? (t.fields || []).filter(d => WB.fieldVisible(d)) : [];
         const colKey = t ? t.id : 'all';
         const hiddenAll = st.get().tableHidden || {};
-        const hidden = new Set(hiddenAll[colKey] || (t ? defs.filter(d => d.kind === 'longtext' || d.kind === 'stats').map(d => 'f:' + d.key).concat(['summary']) : []));
+        const hidden = new Set(hiddenAll[colKey] || (t ? defs.filter(d => d.kind === 'longtext' || d.kind === 'stats').map(d => 'f:' + d.key).concat(['summary', 'parent']) : ['parent']));
         const cols = [{ key: 'title', label: 'Name' }]
           .concat(t ? [] : [{ key: 'type', label: 'Type' }])
+          .concat([{ key: 'parent', label: 'Inside' }])
           .concat(t && t.dated ? [{ key: 'start', label: t.dated.start }].concat(t.dated.end ? [{ key: 'end', label: t.dated.end }] : []) : [])
           .concat(defs.map(d => ({ key: 'f:' + d.key, label: d.label, def: d })))
           .concat([{ key: 'summary', label: 'Summary' }, { key: 'tags', label: 'Tags' }, { key: 'audience', label: 'Audience' }, { key: 'updated', label: 'Edited' }]);
@@ -138,6 +181,7 @@
         const val = (e, c) => {
           if (c.key === 'title') return e.title;
           if (c.key === 'type') return (WB.typeOf(e) || {}).name || '';
+          if (c.key === 'parent') return e.parentId ? WB.titleOf(e.parentId) || '' : '';
           if (c.key === 'start') return e.start ? e.start.day : null;
           if (c.key === 'end') return e.end ? e.end.day : null;
           if (c.key === 'summary') return e.summary;
@@ -157,6 +201,7 @@
         const cell = (e, c) => {
           if (c.key === 'title') return h('div.cx-tcell-title', [WB.ui.icon(e), ro ? h('span', { text: e.title }) : h('input.cx-tin', { value: e.title, oninput: ev => saveP(e, { title: ev.target.value }) }), h('button.cx-topen', { type: 'button', text: '↗', title: 'Open', onclick: () => { setTable(false); select(e.id); } })]);
           if (c.key === 'type') return h('span', { text: (WB.typeOf(e) || {}).name || '' });
+          if (c.key === 'parent') return e.parentId ? WB.ui.chip(e.parentId, { size: 'sm' }) : h('span.gk-faint', { text: '—' });
           if (c.key === 'start' || c.key === 'end') return ro ? h('span', { text: WB.fmt.date(e[c.key]) }) : WB.ui.dateInput({ value: e[c.key], compact: true, onChange: d => { e[c.key] = d; saveP.flush(e, { [c.key]: d }); } });
           if (c.key === 'summary') return ro ? h('span', { text: e.summary }) : h('input.cx-tin', { value: e.summary, placeholder: '—', oninput: ev => saveP(e, { summary: ev.target.value }) });
           if (c.key === 'tags') return h('div.wb-chips', (e.tags || []).map(id => WB.ui.tagChip(id)));
@@ -174,10 +219,44 @@
             default: return h('div.cx-tcell-view', { title: 'Open the entry to edit', onclick: () => { setTable(false); select(e.id); } }, [WB.ui.fieldView(d, v)]);
           }
         };
+        // group by: a choice / yes-no / link field, the type, or what it sits inside
+        const groupOpts = [['', 'No grouping']].concat(t ? [] : [['type', 'Type']], [['parent', 'Inside']], cols.filter(c => c.def && ['choice', 'bool', 'ref', 'rating'].includes(c.def.kind)).map(c => [c.key, c.label]));
+        let groupBy = (st.get().groupBy || {})[colKey] || '';
+        if (!groupOpts.some(o => o[0] === groupBy)) groupBy = '';
+        const groupCol = groupBy === 'type' ? cols.find(c => c.key === 'type') : cols.find(c => c.key === groupBy);
+        const groups = new Map();
+        for (const e of rows) {
+          let g = groupCol ? String(val(e, groupCol) == null ? '' : val(e, groupCol)) : '';
+          if (groupCol && groupBy === 'parent' && !g) g = 'Top level';
+          if (groupCol && groupCol.def && groupCol.def.kind === 'bool') g = e.fields[groupCol.def.key] ? 'Yes' : 'No';
+          if (groupCol && !g) g = '—';
+          if (!groups.has(g)) groups.set(g, []);
+          groups.get(g).push(e);
+        }
+        const groupList = [...groups].sort((a, b) => (a[0] === '—') - (b[0] === '—') || (groupCol ? String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }) : 0));
+        const rowMenu = (e, ev) => { if (ev.target.closest('input, select')) return; ev.preventDefault(); WB.ui.entryMenu(e, ev); };
         const table = h('table.cx-tbl', [
           h('thead', [h('tr', vis.map(c => h('th', { class: tableSort.key === c.key ? 'sorted' : '', title: 'Sort by ' + c.label, onclick: () => { tableSort = { key: c.key, dir: tableSort.key === c.key ? -tableSort.dir : 1 }; paintTable(); } }, [c.label, tableSort.key === c.key ? (tableSort.dir > 0 ? ' ▴' : ' ▾') : ''])))]),
-          h('tbody', rows.map(e => { const tr = h('tr', { dataset: { id: e.id } }, vis.map(c => h('td', { class: 'c-' + c.key.replace(/[^\w-]/g, '_') }, [cell(e, c)]))); tr.addEventListener('contextmenu', ev => { if (ev.target.closest('input, select')) return; ev.preventDefault(); WB.ui.entryMenu(e, ev); }); return tr; })),
+          h('tbody', groupList.flatMap(([g, list]) => [].concat(groupCol ? [h('tr.cx-grouprow', [h('td', { colSpan: vis.length }, [h('b', { text: g }), h('span.gk-small.gk-muted', { text: '  ' + list.length })])])] : [],
+            list.map(e => { const tr = h('tr', { dataset: { id: e.id } }, vis.map(c => h('td', { class: 'c-' + c.key.replace(/[^\w-]/g, '_') }, [cell(e, c)]))); tr.addEventListener('contextmenu', ev => rowMenu(e, ev)); return tr; })))),
         ]);
+        // cards: the same entries (and grouping) as tiles — the type's first few filled fields, tags, what is inside
+        const cardFor = e => {
+          const tp = WB.typeOf(e) || {};
+          const facts = (tp.fields || []).filter(d => WB.fieldVisible(d) && !['longtext', 'stats', 'image'].includes(d.kind)).map(d => [d.label, WB.F.asText(d, e.fields[d.key], WB.titleOf)]).filter(x => x[1]).slice(0, 3);
+          const open = () => { setView('tree'); select(e.id); };
+          const el = h('div.cx-tile', { tabindex: 0, role: 'button', dataset: { id: e.id }, style: { '--c': WB.colorOf(e) }, onclick: open, onkeydown: ev => { if (ev.key === 'Enter') open(); } }, [
+            h('div.cx-tile-head', [h('span.cx-tile-ico', { text: WB.iconOf(e) }), h('b.gk-ellipsis.gk-grow', { text: e.title || 'Untitled' }), counts[e.id] ? h('span.gk-tiny.gk-faint', { title: 'Entries inside', text: '⇲ ' + counts[e.id] }) : null]),
+            h('div.gk-tiny.gk-muted', { text: [tp.name, WB.fmt.span(e), e.parentId ? 'in ' + WB.titleOf(e.parentId) : ''].filter(Boolean).join(' · ') }),
+            e.summary ? h('p.gk-small.cx-tile-sum', { text: e.summary }) : null,
+            facts.length ? h('div.cx-tile-facts', facts.map(([k, v]) => h('span', [h('i', { text: k + ' ' }), String(v).slice(0, 40)]))) : null,
+            (e.tags || []).length ? h('div.wb-chips', e.tags.slice(0, 4).map(id => WB.ui.tagChip(id))) : null,
+          ]);
+          el.addEventListener('contextmenu', ev => { ev.preventDefault(); WB.ui.entryMenu(e, ev); });
+          WB.dnd.entry(el, e.id);
+          return el;
+        };
+        const tiles = h('div.cx-tiles-wrap', groupList.map(([g, list]) => h('section.cx-tilegroup', [groupCol ? h('h4.cx-tilegroup-head', [g, h('span.gk-small.gk-muted', { text: '  ' + list.length })]) : null, h('div.cx-tiles', list.map(cardFor))])));
         const addRow = !ro && t ? h('input.cx-taddrow', { placeholder: '＋ New ' + t.name.toLowerCase() + ' — type a name and press Enter' }) : null;
         if (addRow) addRow.addEventListener('keydown', async ev => { if (ev.key === 'Enter' && addRow.value.trim()) { await WB.api('entries.create', { worldId: WB.worldId, typeId: t.id, title: addRow.value.trim() }); addRow.value = ''; await loadList(); const n = tablePane.querySelector('.cx-taddrow'); if (n) n.focus(); } });
         const copy = async () => {
@@ -188,15 +267,17 @@
         GK.clear(tablePane);
         GK.append(tablePane, [
           h('div.cx-table-tools', [
-            ui.button({ label: 'Pages', icon: '‹', small: true, title: 'Back to the list and entry pages', onClick: () => setTable(false) }),
+            ui.button({ label: 'Pages', icon: '‹', small: true, title: 'Back to the tree and entry pages', onClick: () => setView('tree') }),
             h('b', { text: label }), h('span.gk-small.gk-muted', { text: WB.fmt.plural(rows.length, 'entry', 'entries') }), h('span.gk-grow'),
+            (() => { const s = viewSwitch(); s.classList.add('cx-wideswitch'); return s; })(),
+            ui.select({ value: groupBy, options: groupOpts, onChange: v => { st.patch({ groupBy: Object.assign({}, st.get().groupBy, { [colKey]: v }) }); paintTable(); } }),
             h('div.cx-table-search', [WB.ui.search({ placeholder: 'Filter', value: q, onInput: v => { q = v; loadListD(); } })]),
-            ui.button({ label: 'Columns', icon: '⊞', small: true, onClick: ev => WB.ui.menu(cols.filter(c => c.key !== 'title').map(c => ({ label: c.label, checked: !hidden.has(c.key), onClick: () => { hidden.has(c.key) ? hidden.delete(c.key) : hidden.add(c.key); st.patch({ tableHidden: Object.assign({}, st.get().tableHidden, { [colKey]: [...hidden] }) }); paintTable(); } })), ev.currentTarget) }),
+            cards ? null : ui.button({ label: 'Columns', icon: '⊞', small: true, onClick: ev => WB.ui.menu(cols.filter(c => c.key !== 'title').map(c => ({ label: c.label, checked: !hidden.has(c.key), onClick: () => { hidden.has(c.key) ? hidden.delete(c.key) : hidden.add(c.key); st.patch({ tableHidden: Object.assign({}, st.get().tableHidden, { [colKey]: [...hidden] }) }); paintTable(); } })), ev.currentTarget) }),
             ui.button({ label: 'Copy', icon: '⎘', small: true, title: 'Copy as a spreadsheet', onClick: copy }),
             !ro ? ui.button({ label: 'Add many…', small: true, onClick: addMany }) : null,
           ]),
-          !t ? h('p.gk-small.gk-muted.cx-table-hint', { text: 'Pick a type on the left to see and edit its fields as columns.' }) : null,
-          h('div.cx-table-scroll', [table, addRow]),
+          !t && !cards ? h('p.gk-small.gk-muted.cx-table-hint', { text: 'Pick a type on the left to see and edit its fields as columns.' }) : null,
+          h('div.cx-table-scroll', rows.length ? [cards ? tiles : table, addRow] : [WB.ui.empty({ icon: t ? t.icon : '❖', title: q ? 'Nothing matches' : 'Nothing here yet', text: q ? 'Try fewer words.' : 'Add the first one below, or switch to another source.' }), addRow]),
         ]);
       }
 
@@ -241,8 +322,21 @@
         } catch (err) { WB.fail(err); list = []; }
         if (destroyed) return;
         entries = list.filter(e => WB.visible(e));
+        // a filter in the tree keeps the way down to every match: the parents of matches are listed too (dimmed)
+        ctxIds = new Set();
+        if (q && st.get().view === 'tree' && src.kind !== 'trash' && src.kind !== 'recent') {
+          const have = new Set(entries.map(e => e.id)), need = [];
+          for (const e of entries.slice()) {
+            let p = e.parentId, g = 0;
+            while (p && g++ < 60) { if (!have.has(p)) { have.add(p); ctxIds.add(p); need.push(p); } p = (WB.liteOf(p) || {}).parentId; }
+          }
+          if (need.length) entries = entries.concat((await WB.api('entries.many', need).catch(() => [])).filter(e => !e.deletedAt && WB.visible(e)));
+          if (destroyed) return;
+        }
+        counts = await WB.api('entries.descendantCounts', WB.worldId).catch(() => ({}));
+        if (destroyed) return;
         paintList();
-        if (st.get().table) paintTable();
+        if (wide()) paintTable();
       }
       const loadListD = WB.debounce(loadList, 140);
       function paintList() {
@@ -258,75 +352,181 @@
               : { icon: src.kind === 'type' ? (WB.types.get(src.id) || {}).icon : '❖', title: 'Nothing here yet', text: src.kind === 'inbox' ? 'Captured ideas land here (Ctrl+Shift+N).' : 'Start with a name — you can fill in the rest any time.', actions: [ui.button({ label: 'New entry', icon: '＋', kind: 'primary', onClick: () => newEntry() })] }));
           return;
         }
-        const tree = view === 'tree' && !q && !trash && src.kind !== 'recent' && st.get().sort === 'position';
-        const collapsed = new Set(st.get().collapsed);
+        const tree = view === 'tree' && !trash && src.kind !== 'recent';
+        const manual = st.get().sort === 'position' && !q;
+        const collapsed = q ? new Set() : getCollapsed();   // a filter opens everything so the matches show
         const ids = new Set(entries.map(e => e.id));
+        const kidsOf = new Map();
+        if (tree) for (const e of entries) { if (e.parentId && ids.has(e.parentId)) { if (!kidsOf.has(e.parentId)) kidsOf.set(e.parentId, []); kidsOf.get(e.parentId).push(e); } }
+        if (tree && q) for (const l of kidsOf.values()) l.sort((a, b) => (a.position - b.position) || a.title.localeCompare(b.title));
         let n = 0;
+        const toggle = id => { const c = getCollapsed(); c.has(id) ? c.delete(id) : c.add(id); setCollapsed(c); paintList(); };
         const rowFor = (e, depth, hasKids) => {
-          const tw = hasKids ? h('button.cx-twisty', { type: 'button', text: collapsed.has(e.id) ? '▸' : '▾', title: collapsed.has(e.id) ? 'Expand' : 'Collapse', onclick: ev => { ev.stopPropagation(); collapsed.has(e.id) ? collapsed.delete(e.id) : collapsed.add(e.id); st.patch({ collapsed: [...collapsed] }); paintList(); } }) : h('span.cx-twisty.none');
+          const open = hasKids && !collapsed.has(e.id);
+          const tw = hasKids ? h('button.cx-twisty', { type: 'button', tabindex: -1, text: open ? '▾' : '▸', title: open ? 'Collapse' : 'Expand', onclick: ev => { ev.stopPropagation(); toggle(e.id); } }) : h('span.cx-twisty.none');
+          const tail = [];
+          if (trash) tail.push(ui.button({ label: 'Restore', small: true, onClick: async ev => { ev.stopPropagation(); await WB.api('entries.restore', e.id); loadList(); paintSources(); } }));
+          else {
+            if (e.inbox) tail.push(WB.ui.badge('inbox', 'accent'));
+            if (counts[e.id]) tail.push(h('span.cx-count.gk-tiny', { title: WB.fmt.plural(counts[e.id], 'entry', 'entries') + ' inside, at any depth', text: counts[e.id] }));
+          }
           const row = WB.ui.row(e, {
             active: (current && current.id === e.id) || selected.has(e.id), indent: depth,
             sub: [WB.fmt.span(e), e.summary].filter(Boolean).join(' · ') || (WB.typeOf(e) || {}).name,
-            trailing: trash ? ui.button({ label: 'Restore', small: true, onClick: async ev => { ev.stopPropagation(); await WB.api('entries.restore', e.id); loadList(); paintSources(); } }) : e.inbox ? WB.ui.badge('inbox', 'accent') : null,
+            trailing: tail.length ? h('span.cx-tail', tail) : null,
             onClick: (x, ev) => clickRow(x, ev),
-            menuExtra: [{ label: 'Select', icon: '☑', onClick: () => { selected.add(e.id); paintList(); } }],
+            menuExtra: [{ label: selected.has(e.id) ? 'Unselect' : 'Select', icon: '☑', onClick: () => { selected.has(e.id) ? selected.delete(e.id) : selected.add(e.id); paintList(); } },
+              selected.size > 1 && selected.has(e.id) ? { label: 'Move the ' + selected.size + ' selected to…', icon: '⇲', onClick: () => WB.tree.moveDialog([...selected]) } : null].filter(Boolean),
           });
           row.prepend(tw);
-          if (tree) dropTarget(row, e);
+          row.setAttribute('role', 'treeitem');
+          if (tree) row.setAttribute('aria-level', depth + 1);
+          if (hasKids) row.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (selected.has(e.id)) row.classList.add('sel');
+          if (ctxIds.has(e.id)) row.classList.add('ctx');
+          if (!trash) dropTarget(row, e, { manual, tree });
           return row;
         };
-        const add = (e, depth) => {
+        const add = (e, depth, seen) => {
           if (n++ > more) return;
-          const kids = tree ? entries.filter(c => c.parentId === e.id) : [];
+          const kids = tree ? kidsOf.get(e.id) || [] : [];
           listBody.appendChild(rowFor(e, depth, kids.length > 0));
-          if (kids.length && !collapsed.has(e.id)) kids.forEach(c => add(c, depth + 1));
+          if (kids.length && !collapsed.has(e.id) && !seen.has(e.id)) { seen.add(e.id); kids.forEach(c => add(c, depth + 1, seen)); }
         };
-        if (tree) entries.filter(e => !e.parentId || !ids.has(e.parentId)).forEach(e => add(e, 0));
-        else entries.forEach(e => add(e, 0));
+        if (tree) entries.filter(e => !e.parentId || !ids.has(e.parentId)).forEach(e => add(e, 0, new Set()));
+        else entries.forEach(e => add(e, 0, new Set()));
         if (n > more) listBody.appendChild(ui.button({ label: 'Show more', small: true, kind: 'ghost', onClick: () => { more += 400; paintList(); } }));
+        if (pendingFocus) { const r = listBody.querySelector('.wb-row[data-id="' + pendingFocus + '"]'); pendingFocus = null; if (r) r.focus({ preventScroll: false }); }
+        hintsEl.textContent = tree ? (manual ? 'Drag to nest or reorder · Tab / Shift+Tab indent · Alt+↑↓ move · ←→ fold · Shift/Ctrl-click select' : 'Drag onto an entry to nest it · Tab / Shift+Tab indent · ←→ fold · Shift/Ctrl-click select')
+          : 'Shift/Ctrl-click to select several · right-click for more';
         paintBulk();
       }
-      function dropTarget(row, e) {
-        row.addEventListener('dragover', ev => {
-          if (!WB.dnd.has(ev)) return;
-          ev.preventDefault();
+      /** is `id` one of `ids` or somewhere below one of them? (the tree cannot move into itself) */
+      const underAny = (id, ids) => { let p = id, g = 0; while (p && g++ < 60) { if (ids.includes(p)) return true; p = (WB.liteOf(p) || {}).parentId; } return false; };
+      let hoverTimer = null;
+      function dropTarget(row, e, { manual, tree }) {
+        const zone = ev => {
+          if (!manual || !tree) return 'inside';
           const r = row.getBoundingClientRect(), y = ev.clientY - r.top;
-          row.dataset.drop = y < r.height * .28 ? 'before' : y > r.height * .72 ? 'after' : 'inside';
+          return y < r.height * .28 ? 'before' : y > r.height * .72 ? 'after' : 'inside';
+        };
+        row.addEventListener('dragover', ev => {
+          if (!WB.dnd.has(ev) || WB.share) return;
+          if (dragIds.length && underAny(e.id, dragIds)) { ev.dataTransfer.dropEffect = 'none'; row.dataset.drop = 'no'; return; }
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = 'move';
+          const z = zone(ev);
+          if (row.dataset.drop !== z) { row.dataset.drop = z; clearTimeout(hoverTimer); if (z === 'inside' && getCollapsed().has(e.id)) hoverTimer = setTimeout(() => { const c = getCollapsed(); c.delete(e.id); setCollapsed(c); paintList(); }, 700); }
         });
-        row.addEventListener('dragleave', () => delete row.dataset.drop);
+        row.addEventListener('dragleave', ev => { if (!row.contains(ev.relatedTarget)) { delete row.dataset.drop; clearTimeout(hoverTimer); } });
         row.addEventListener('drop', async ev => {
-          const id = WB.dnd.id(ev), where = row.dataset.drop; delete row.dataset.drop;
-          if (!id || id === e.id) return;
+          const where = row.dataset.drop; delete row.dataset.drop; clearTimeout(hoverTimer);
+          const ids = dragIds.length ? dragIds : [WB.dnd.id(ev)].filter(Boolean);
+          if (!ids.length || where === 'no' || ids.includes(e.id)) return;
           ev.preventDefault(); ev.stopPropagation();
-          try {
-            if (where === 'inside') { await WB.api('entries.move', id, { parentId: e.id }); const c = new Set(st.get().collapsed); c.delete(e.id); st.patch({ collapsed: [...c] }); }
-            else await WB.api('entries.move', id, { parentId: e.parentId || null, [where === 'before' ? 'beforeId' : 'afterId']: e.id });
-          } catch (err) { WB.fail(err); }
+          const z = where || 'inside';
+          const ok = z === 'inside' ? await WB.tree.move(ids, { parentId: e.id }) : await WB.tree.move(ids, { parentId: e.parentId || null, [z === 'before' ? 'beforeId' : 'afterId']: e.id });
+          if (ok && z === 'inside') { const c = getCollapsed(); c.delete(e.id); setCollapsed(c); }
+          dragIds = [];
+          loadList();
         });
       }
+      // what is being dragged: the whole selection when the dragged row belongs to it
+      listBody.addEventListener('dragstart', ev => {
+        const r = ev.target.closest && ev.target.closest('.wb-row');
+        if (!r) return;
+        dragIds = selected.has(r.dataset.id) && selected.size > 1 ? [...selected] : [r.dataset.id];
+      });
+      listBody.addEventListener('dragend', () => { dragIds = []; listBody.querySelectorAll('[data-drop]').forEach(r => delete r.dataset.drop); });
+      // dropping on the empty part of the list puts it at the top level, last
+      listBody.addEventListener('dragover', ev => { if (WB.dnd.has(ev) && !WB.share && ev.target === listBody) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; } });
+      listBody.addEventListener('drop', async ev => {
+        if (ev.target !== listBody) return;
+        const ids = dragIds.length ? dragIds : [WB.dnd.id(ev)].filter(Boolean);
+        if (!ids.length) return;
+        ev.preventDefault(); dragIds = [];
+        await WB.tree.move(ids, { parentId: null }); loadList();
+      });
+
       function clickRow(e, ev) {
-        if (ev.ctrlKey || ev.metaKey) { if (current && !selected.size) selected.add(current.id); selected.has(e.id) ? selected.delete(e.id) : selected.add(e.id); paintList(); return; }
-        if (ev.shiftKey && current) {
-          const order = [...listBody.querySelectorAll('.wb-row')].map(r => r.dataset.id);
-          const a = order.indexOf(current.id), b = order.indexOf(e.id);
-          order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(id => selected.add(id));
-          paintList(); return;
+        const order = () => [...listBody.querySelectorAll('.wb-row')].map(r => r.dataset.id);
+        if (ev.ctrlKey || ev.metaKey) { if (current && !selected.size) selected.add(current.id); selected.has(e.id) ? selected.delete(e.id) : selected.add(e.id); anchor = e.id; pendingFocus = e.id; paintList(); return; }
+        if (ev.shiftKey && (anchor || current)) {
+          const o = order(), a = o.indexOf(anchor || current.id), b = o.indexOf(e.id);
+          if (a >= 0 && b >= 0) { o.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(id => selected.add(id)); pendingFocus = e.id; paintList(); return; }
         }
-        selected.clear();
+        selected.clear(); anchor = e.id;
         select(e.id);
       }
+      /* keys in the list: Tab / Shift+Tab indent and outdent, Alt+Up / Alt+Down move among siblings, Left / Right fold */
+      const targetIds = id => (selected.size > 1 && selected.has(id) ? [...listBody.querySelectorAll('.wb-row')].map(r => r.dataset.id).filter(x => selected.has(x)) : [id]);
+      const reselect = ids => { pendingFocus = ids[ids.length - 1]; };
+      async function indentIds(ids) {
+        let any = false;
+        for (const id of ids) {
+          const e = entries.find(x => x.id === id); if (!e) continue;
+          const sibs = entries.filter(x => (x.parentId || null) === (e.parentId || null) && !x.deletedAt);
+          const i = sibs.findIndex(x => x.id === id);
+          if (i < 1) continue;
+          if (await WB.tree.move([id], { parentId: sibs[i - 1].id }, { quiet: true })) { any = true; const c = getCollapsed(); c.delete(sibs[i - 1].id); setCollapsed(c); }
+          await loadListNow();
+        }
+        if (!any) ui.toast('Nothing above it to nest it under', 'ℹ');
+      }
+      async function outdentIds(ids) {
+        let any = false;
+        for (const id of ids.slice().reverse()) {
+          const e = entries.find(x => x.id === id); if (!e || !e.parentId) continue;
+          const p = WB.liteOf(e.parentId); if (!p) continue;
+          if (await WB.tree.move([id], { parentId: p.parentId || null, afterId: p.id }, { quiet: true })) any = true;
+          await loadListNow();
+        }
+        if (!any) ui.toast('Already at the top level', 'ℹ');
+      }
+      async function shiftIds(ids, dir) {
+        for (const id of dir < 0 ? ids : ids.slice().reverse()) { try { await WB.api('entries.shift', id, dir); } catch (err) { WB.fail(err); } }
+        await loadListNow();
+      }
+      const loadListNow = () => loadList();
+      listBody.addEventListener('keydown', async ev => {
+        const row = ev.target.closest && ev.target.closest('.wb-row');
+        if (!row || ev.target !== row || WB.share) return;
+        const id = row.dataset.id, tree = st.get().view === 'tree' && st.get().source.kind !== 'trash';
+        const ids = targetIds(id);
+        if (ev.key === 'Tab' && tree) { ev.preventDefault(); reselect(ids); await (ev.shiftKey ? outdentIds(ids) : indentIds(ids)); }
+        else if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && tree) { ev.preventDefault(); reselect(ids); await shiftIds(ids, ev.key === 'ArrowUp' ? -1 : 1); }
+        else if ((ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') && tree && !ev.altKey) {
+          const kids = entries.some(x => x.parentId === id), c = getCollapsed(), closed = c.has(id);
+          if (ev.key === 'ArrowRight') { ev.preventDefault(); if (kids && closed) { c.delete(id); setCollapsed(c); pendingFocus = id; paintList(); } else if (kids) { const nx = row.nextElementSibling; if (nx) nx.focus(); } }
+          else { ev.preventDefault(); if (kids && !closed && !q) { c.add(id); setCollapsed(c); pendingFocus = id; paintList(); } else { const p = entries.find(x => x.id === (entries.find(y => y.id === id) || {}).parentId); const pr = p && listBody.querySelector('.wb-row[data-id="' + p.id + '"]'); if (pr) pr.focus(); } }
+        }
+        else if (ev.key === 'a' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); entries.forEach(x => selected.add(x.id)); pendingFocus = id; paintList(); }
+        else if (ev.key === ' ' && !ev.target.closest('button')) { ev.preventDefault(); selected.has(id) ? selected.delete(id) : selected.add(id); anchor = id; pendingFocus = id; paintList(); }
+        else if (ev.key === 'Escape' && selected.size) { selected.clear(); pendingFocus = id; paintList(); }
+      });
       function paintBulk() {
         GK.clear(bulkBar);
         bulkBar.classList.toggle('on', selected.size > 1);
         if (selected.size < 2) return;
-        const ids = [...selected];
+        const ids = [...selected], ordered = () => [...listBody.querySelectorAll('.wb-row')].map(r => r.dataset.id).filter(x => selected.has(x));
         GK.append(bulkBar, [h('b', { text: selected.size + ' selected' }), h('span.gk-grow'),
+          ui.button({ label: 'Move…', small: true, title: 'Move all of them into another entry (or the top level)', onClick: () => WB.tree.moveDialog(ordered()).then(ok => { if (ok) loadList(); }) }),
+          ui.button({ icon: '⇥', small: true, title: 'Indent (Tab)', onClick: () => indentIds(ordered()) }),
+          ui.button({ icon: '⇤', small: true, title: 'Outdent (Shift+Tab)', onClick: () => outdentIds(ordered()) }),
           ui.button({ label: '#', small: true, title: 'Add a tag to all of them', onClick: async () => { const n = await ui.prompt('Tag ' + ids.length + ' entries', '', 'tag name'); if (n) { await WB.api('entries.bulk', ids, { addTag: n }); ui.toast('Tagged ' + ids.length, '#'); } } }),
+          ui.button({ label: 'Type', small: true, title: 'Change the type of all of them', onClick: ev => WB.ui.menu(WB.typeList().map(x => ({ label: x.name, icon: x.icon, onClick: async () => { await WB.api('entries.bulk', ids, { typeId: x.id }); ui.toast(ids.length + ' are now ' + x.plural.toLowerCase(), x.icon); paintSources(); } })), ev.currentTarget || bulkBar) }),
           ui.button({ label: 'Audience', small: true, onClick: ev => WB.ui.menu(WB.know.LEVELS.map(([v, l]) => ({ label: l, onClick: () => WB.api('entries.bulk', ids, { audience: v }) })), ev.currentTarget || bulkBar) }),
           ui.button({ label: '★', small: true, title: 'Add to favourites', onClick: () => WB.api('entries.bulk', ids, { favorite: true }) }),
-          ui.button({ label: 'Move…', small: true, onClick: async () => { const p = await WB.ui.pickEntry({ title: 'Move ' + ids.length + ' entries into…', exclude: ids, allowNone: 'Top level' }); if (p !== undefined) for (const id of ids) await WB.api('entries.move', id, { parentId: p ? p.id : null }).catch(WB.fail); } }),
-          ui.button({ label: 'Delete', small: true, kind: 'danger', onClick: async () => { await WB.api('entries.bulk', ids, { trash: true }); selected.clear(); WB.ui.undoToast(ids.length + ' entries moved to the trash', async () => { for (const id of ids) await WB.api('entries.restore', id).catch(() => {}); }); } }),
-          ui.button({ icon: '✕', small: true, kind: 'ghost', title: 'Clear the selection', onClick: () => { selected.clear(); paintList(); } })]);
+          ui.button({ label: 'Delete', small: true, kind: 'danger', onClick: () => bulkDelete(ids) }),
+          ui.button({ icon: '✕', small: true, kind: 'ghost', title: 'Clear the selection (Esc)', onClick: () => { selected.clear(); paintList(); } })]);
+      }
+      async function bulkDelete(ids) {
+        const inside = ids.reduce((s, id) => s + (counts[id] || 0), 0);
+        if (inside && !(await ui.confirm('Delete ' + ids.length + ' entries?', 'Everything inside them goes to the trash too' + (inside ? ' (' + WB.fmt.plural(inside, 'more entry', 'more entries') + ')' : '') + '. You can undo this.', 'Move to trash', true))) return;
+        await WB.api('entries.bulk', ids, { trash: true }); selected.clear();
+        WB.ui.undoToast(ids.length + ' entries moved to the trash', async () => { for (const id of ids) await WB.api('entries.restore', id).catch(() => {}); });
+        if (current && ids.includes(current.id)) { current = null; paintEmpty(); }
+        loadList(); paintSources();
       }
 
       /* ---------------- the entry page ---------------- */
@@ -340,6 +540,7 @@
         st.patch({ last: id });
         WB.touch(id);
         WB.record('codex', { entryId: id });
+        if (st.get().view === 'tree' && reveal(id)) paintList();   // an entry opened from elsewhere is shown, not hidden in a folded branch
         listBody.querySelectorAll('.wb-row').forEach(r => r.classList.toggle('on', r.dataset.id === id || selected.has(r.dataset.id)));
         const row = listBody.querySelector('.wb-row[data-id="' + id + '"]');
         if (row) row.scrollIntoView({ block: 'nearest' });
@@ -379,7 +580,19 @@
           if (!ro) aliasBox.appendChild(h('button.cx-addlink', { type: 'button', text: e.aliases && e.aliases.length ? '＋' : '＋ also known as…', title: 'Other names find it in search and in @ links', onclick: async () => { const a = await ui.prompt('Also known as', '', 'another name'); if (a) { e.aliases = (e.aliases || []).concat(a); saveNow({ aliases: e.aliases }); paintAliases(); } } }));
         };
         paintAliases();
-        WB.api('entries.context', e.id).then(c => { GK.clear(crumb); c.breadcrumb.forEach(p => crumb.append(WB.ui.chip(p, { size: 'sm' }), h('span.gk-faint', { text: ' › ' }))); }).catch(() => {});
+        // path: every ancestor opens on click, and the little arrow after each lists its siblings; the last one is this entry
+        const sibMenu = async (p, anchorEl) => {
+          const sibs = (await WB.api('entries.list', WB.worldId, { parentId: p.parentId || null, sort: 'position', limit: 80 }).catch(() => [])).filter(x => WB.visible(x));
+          WB.ui.menu(sibs.length ? sibs.map(x => ({ label: x.title || 'Untitled', icon: WB.iconOf(x), checked: x.id === p.id, onClick: () => (x.id === e.id ? null : select(x.id)) })) : [{ label: 'No siblings', disabled: true }], anchorEl);
+        };
+        const crumbArrow = p => h('button.cx-crumb-sib', { type: 'button', text: '▾', title: 'Others at this level', 'aria-label': 'Others at this level', onclick: ev => sibMenu(p, ev.currentTarget) });
+        const paintCrumb = path => {
+          GK.clear(crumb);
+          path.forEach(p => crumb.append(WB.ui.chip(p, { size: 'sm' }), crumbArrow(p), h('span.gk-faint.cx-crumb-sep', { text: '›' })));
+          crumb.append(h('span.cx-crumb-here', { text: e.title || 'Untitled' }), crumbArrow(e));
+        };
+        paintCrumb([]);
+        WB.api('entries.context', e.id).then(c => paintCrumb(c.breadcrumb.filter(p => p.id !== e.id))).catch(() => {});
         const fav = ui.button({ icon: e.favorite ? '★' : '☆', small: true, kind: 'ghost', title: e.favorite ? 'Remove from favourites' : 'Add to favourites', onClick: async () => { e.favorite = !e.favorite; await saveNow({ favorite: e.favorite }); fav.firstChild.textContent = e.favorite ? '★' : '☆'; fav.classList.toggle('on', e.favorite); } });
         fav.classList.toggle('on', e.favorite);
         const typeBtn = h('button.wb-type.cx-typebtn', { type: 'button', style: { '--c': t.color }, title: ro ? t.name : 'Change type', onclick: ev => !ro && WB.ui.menu(WB.typeList().filter(x => x.id !== e.typeId).map(x => ({ label: x.name, icon: x.icon, onClick: async () => { await saveNow({ typeId: x.id }); paintEntry(); paintSources(); } })), ev.currentTarget) }, [h('span.wb-type-ico', { text: t.icon }), h('span', { text: t.name })]);
@@ -488,8 +701,9 @@
             { label: 'Versions…', icon: '◷', onClick: () => versions(e) },
             { label: 'Copy as Markdown', icon: '⎘', onClick: async () => { await navigator.clipboard.writeText('# ' + e.title + '\n\n' + (e.summary ? '> ' + e.summary + '\n\n' : '') + WB.text.toMarkdown(WB.strip(e.body), { link: (id, l) => '[[' + (WB.titleOf(id) || l) + ']]' })); ui.toast('Copied as Markdown', '⎘'); } },
             '-',
-            { label: 'Duplicate', icon: '⧉', onClick: async () => { const c = await WB.api('entries.duplicate', e.id, { children: true }); await loadList(); select(c.id); } },
-            { label: 'Move into…', icon: '⇲', onClick: async () => { const p = await WB.ui.pickEntry({ title: 'Move “' + e.title + '” into…', exclude: [e.id], allowNone: 'Top level' }); if (p !== undefined) { await WB.api('entries.move', e.id, { parentId: p ? p.id : null }); select(e.id); } } },
+            { label: 'Duplicate', icon: '⧉', hint: counts[e.id] ? 'Just this entry, without what is inside it' : undefined, onClick: async () => { const c = await WB.api('entries.duplicate', e.id, { children: false }); await loadList(); select(c.id); } },
+            counts[e.id] ? { label: 'Duplicate with everything inside', icon: '⧉', hint: WB.fmt.plural(counts[e.id], 'entry', 'entries') + ' are copied too', onClick: async () => { const c = await WB.api('entries.duplicate', e.id, { children: true }); await loadList(); select(c.id); } } : null,
+            { label: 'Move to…', icon: '⇲', onClick: async () => { if (await WB.tree.moveDialog([e.id])) select(e.id); } },
             { label: 'Merge into…', icon: '⤞', onClick: () => WB.ui.mergeDialog(e) },
             { label: 'Copy mention', icon: '@', hint: 'Paste it into any text to link this entry', onClick: () => WB.copyMention(e) },
             '-',
@@ -513,15 +727,46 @@
         return h('span.cx-dateline.gk-small.gk-muted', { text: [span, age != null ? (dead ? 'lived ' + age + ' years' : 'age ' + age) : ''].filter(Boolean).join(' · ') });
       }
       async function paintChildren(box, e, t, ro) {
-        const kids = await WB.api('entries.list', WB.worldId, { parentId: e.id }).catch(() => []);
+        const [kids, cnt] = await Promise.all([WB.api('entries.list', WB.worldId, { parentId: e.id, sort: 'position' }).catch(() => []), WB.api('entries.descendantCounts', WB.worldId).catch(() => ({}))]);
         if (destroyed || !box.isConnected) return;
         const vis = kids.filter(k => WB.visible(k));
-        if (!vis.length && !t.hierarchical && !(t.childTypes || []).length) return;
-        const childType = WB.type((t.childTypes || [])[0]) || t;
-        const list = h('div.cx-kids');
-        vis.forEach(k => list.appendChild(WB.ui.row(k, { sub: [(WB.typeOf(k) || {}).name, k.summary].filter(Boolean).join(' · ') })));
-        box.appendChild(h('div.gk-panel.cx-card', [h('div.cx-card-head', [h('h4', { text: 'Inside ' + e.title + (vis.length ? ' (' + vis.length + ')' : '') }), ro ? null : ui.button({ label: 'Add ' + childType.name.toLowerCase(), icon: '＋', small: true, onClick: () => WB.ui.createDialog({ type: childType.key, parentId: e.id }) })]),
-          vis.length ? list : h('p.gk-small.gk-muted', { text: 'Nothing inside yet.' + (childType.key === 'place' ? ' Districts, buildings, landmarks…' : '') })]));
+        const total = cnt[e.id] || 0;
+        const nests = t.hierarchical || (t.childTypes || []).length > 0;
+        if (!vis.length && ro) return;
+        const refresh = () => { GK.clear(box); paintChildren(box, e, t, ro); loadList(); };
+        // suggested child types first (the type's own list, itself when it nests), then everything else
+        const sug = WB.F.childChoices(t).map(k => WB.type(k)).filter(Boolean);
+        const others = WB.typeList().filter(x => !sug.includes(x));
+        let childType = sug[0] || t;
+        const typeSel = ui.select({ value: childType.id, options: sug.map(x => [x.id, x.icon + '  ' + x.name]).concat(sug.length && others.length ? [['', '──────']] : [], others.map(x => [x.id, x.icon + '  ' + x.name])), onChange: v => { if (v && WB.types.get(v)) { childType = WB.types.get(v); input.placeholder = ph(); } else typeSel.value = childType.id; } });
+        typeSel.title = 'Type of what you add';
+        const ph = () => '＋ Add ' + (/^[aeiou]/i.test(childType.name) ? 'an ' : 'a ') + childType.name.toLowerCase() + ' inside — type a name, press Enter';
+        const input = h('input.cx-quickadd', { placeholder: ph(), 'aria-label': 'Add inside' });
+        input.addEventListener('keydown', async ev => {
+          if (ev.key !== 'Enter' || !input.value.trim()) return;
+          try { await WB.api('entries.create', { worldId: WB.worldId, typeId: childType.id, title: input.value.trim(), parentId: e.id }); input.value = ''; refresh(); setTimeout(() => { const n = box.querySelector('.cx-quickadd'); if (n) n.focus(); }, 80); } catch (err) { WB.fail(err); }
+        });
+        const list = h('div.cx-kids', { role: 'list' });
+        vis.forEach((k, i) => {
+          const row = WB.ui.row(k, { sub: [(WB.typeOf(k) || {}).name, k.summary].filter(Boolean).join(' · '), onClick: (x, ev) => (ev.ctrlKey || ev.metaKey ? WB.peek(x.id) : select(x.id)),
+            trailing: h('span.cx-tail', [cnt[k.id] ? h('span.cx-count.gk-tiny', { title: WB.fmt.plural(cnt[k.id], 'entry', 'entries') + ' inside', text: cnt[k.id] }) : null,
+              ro ? null : h('button.cx-mini', { type: 'button', text: '↑', title: 'Move up', disabled: i === 0, onclick: async ev => { ev.stopPropagation(); await WB.api('entries.shift', k.id, -1); refresh(); } }),
+              ro ? null : h('button.cx-mini', { type: 'button', text: '↓', title: 'Move down', disabled: i === vis.length - 1, onclick: async ev => { ev.stopPropagation(); await WB.api('entries.shift', k.id, 1); refresh(); } })]) });
+          list.appendChild(row);
+        });
+        const menu = ev => WB.ui.menu([
+          { label: 'Sort A–Z', icon: '↕', onClick: async () => { await WB.api('entries.reorder', vis.slice().sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true })).map(k => k.id)); refresh(); } },
+          { label: 'Move everything up a level', icon: '⇤', hint: 'The contents sit beside “' + e.title + '” instead of inside it', disabled: !vis.length, onClick: async () => { if (await WB.tree.move(vis.map(k => k.id), { parentId: e.parentId || null, afterId: e.id })) { refresh(); } } },
+          { label: 'Move everything to…', icon: '⇲', disabled: !vis.length, onClick: async () => { if (await WB.tree.moveDialog(vis.map(k => k.id))) refresh(); } },
+        ], ev.currentTarget);
+        const card = h('div.gk-panel.cx-card.cx-contents', [
+          h('div.cx-card-head', [h('h4', { text: 'Contents' + (vis.length ? ' · ' + WB.fmt.plural(vis.length, 'entry', 'entries') : '') }), total > vis.length ? h('span.gk-small.gk-muted', { text: total + ' in all, at any depth' }) : null, h('span.gk-grow'),
+            ro ? null : h('div.gk-row.nowrap', sug.slice(0, 3).map(x => ui.button({ label: x.name, icon: '＋', small: true, title: 'New ' + x.name.toLowerCase() + ' inside “' + e.title + '”', onClick: async () => { const c = await WB.ui.createDialog({ type: x.key, parentId: e.id, open: false }); if (c) refresh(); } })).concat(vis.length ? [ui.button({ icon: '⋯', small: true, kind: 'ghost', title: 'More', onClick: menu })] : []))]),
+          vis.length ? list : h('p.gk-small.gk-muted', { text: nests ? 'Nothing inside yet. ' + (childType.key === 'place' ? 'Districts, buildings, landmarks…' : 'Add the first one below.') : 'Nothing inside. Any entry can hold others: add one below, or drag entries here.' }),
+          ro ? null : h('div.cx-quickrow', [typeSel, input]),
+        ]);
+        if (!ro) WB.dnd.accept(card, async id => { if (id !== e.id && await WB.tree.move([id], { parentId: e.id })) refresh(); });
+        box.appendChild(card);
         WB.ui.listKeys(list);
       }
 
@@ -652,7 +897,7 @@
           WB.ui.search({ placeholder: 'Find a kind of relation', onInput: v => { rq = v.toLowerCase(); paintOpts(); } }), list,
           ui.field({ label: '… of', control: tBox }),
           h('div.cx-relmore', [ui.field({ label: 'Note', control: ui.input({ placeholder: 'optional', onInput: v => { note = v; } }) }), WB.ui.dateRange({ labels: { start: 'From', end: 'Until' }, onChange: v => { start = v.start; end = v.end; } })]),
-          h('p.gk-tiny.gk-faint', { text: 'Need another kind? World → Relations lets you add your own.' }),
+          h('p.gk-tiny.gk-faint', { text: 'Need another kind? World settings → Structure → Relations lets you add your own.' }),
         ]), actions: [{ label: 'Cancel', value: false }, { label: 'Add', kind: 'primary', value: true }] });
         if (!ok) return;
         if (!target || !choice) return ui.toast('Pick a kind of relation and who it is with', 'ℹ');
@@ -687,6 +932,7 @@
         const typing = ev.target.closest && ev.target.closest('input, textarea, select, [contenteditable="true"]');
         if (ev.ctrlKey && ev.key.toLowerCase() === 'f') { ev.preventDefault(); search.querySelector('input').focus(); }
         else if (ev.key === 'F2' && current) { ev.preventDefault(); const t = pagePane.querySelector('.cx-title'); if (t) { t.focus(); t.select(); } }
+        else if (ev.key === 'Delete' && !typing && selected.size > 1 && !WB.share) { ev.preventDefault(); bulkDelete([...selected]); }
         else if (ev.key === 'Delete' && !typing && current && !WB.share) { ev.preventDefault(); const e = current; WB.ui.confirmTrash(e).then(() => { current = null; paintEmpty(); loadList(); paintSources(); }); }
       };
       document.addEventListener('keydown', onKey);
@@ -737,5 +983,69 @@
     await WB.open(e.id); await WB.wait(900);
     return { dateline: (document.querySelector('.cx-dateline') || {}).textContent || '', relations: document.querySelectorAll('.cx-rel').length };
   });
-  WB.check('codex opens an entry page', () => { if (!/^ok/.test(smokeResult)) throw new Error(smokeResult); return true; });
+  /* nesting in the real UI: Tab indents, Alt+Up reorders, a drag reparents; the view switcher; the path above an entry */
+  const nest = { ok: false };
+  WB.smoke('codex-nesting', async () => {
+    const mk = (title, parentId) => WB.api('entries.create', { worldId: WB.worldId, typeKey: 'place', title, parentId });
+    const root = await mk('Smoke Root'), a = await mk('Smoke A', root.id), b = await mk('Smoke B', root.id);
+    await WB.open(root.id); await WB.wait(900);
+    const row = id => document.querySelector('.cx-rows .wb-row[data-id="' + id + '"]');
+    const parentOf = async id => (await WB.api('entries.get', id)).parentId;
+    const out = {};
+    // Tab: B goes inside A
+    row(b.id).focus();
+    row(b.id).dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    await WB.wait(1000);
+    out.tab = (await parentOf(b.id)) === a.id;
+    // Shift+Tab: back beside A
+    row(b.id).focus();
+    row(b.id).dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    await WB.wait(1000);
+    out.shiftTab = (await parentOf(b.id)) === root.id;
+    // Alt+Up: B goes above A
+    row(b.id).focus();
+    row(b.id).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true, cancelable: true }));
+    await WB.wait(1000);
+    out.altUp = (await WB.api('entries.list', WB.worldId, { parentId: root.id, sort: 'position' })).map(e => e.title).join() === 'Smoke B,Smoke A';
+    // drag: B onto the middle of A's row puts it inside A
+    const dt = new DataTransfer();
+    row(b.id).dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    const r = row(a.id).getBoundingClientRect(), at = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 20, clientY: r.top + r.height / 2 };
+    row(a.id).dispatchEvent(new DragEvent('dragover', at));
+    out.hint = row(a.id).dataset.drop || '';
+    row(a.id).dispatchEvent(new DragEvent('drop', at));
+    await WB.wait(1100);
+    out.drag = (await parentOf(b.id)) === a.id;
+    nest.ok = out.tab && out.shiftTab && out.altUp && out.drag && out.hint === 'inside';
+    nest.ids = { root: root.id, a: a.id, b: b.id };
+    return out;
+  });
+  WB.smoke('codex-views', async () => {
+    await GK.shell.go('codex'); await WB.wait(500);
+    const pick = label => { const b = [...document.querySelectorAll('.cx-viewsw button, .cx-wideswitch button')].find(x => x.textContent.trim() === label); if (b) b.click(); return !!b; };
+    const out = {};
+    out.table = pick('Table'); await WB.wait(900);
+    out.rows = document.querySelectorAll('.cx-tbl tbody tr').length;
+    out.cards = pick('Cards'); await WB.wait(700);
+    out.tiles = document.querySelectorAll('.cx-tile').length;
+    out.back = pick('Tree'); await WB.wait(500);
+    out.tree = document.querySelectorAll('.cx-rows .wb-row').length;
+    nest.views = out.table && out.rows > 5 && out.cards && out.tiles > 5 && out.back && out.tree > 5;
+    return out;
+  });
+  WB.smoke('codex-breadcrumb', async () => {
+    const ids = nest.ids;
+    if (!ids) return 'error: nesting step did not run';
+    await WB.open(ids.b); await WB.wait(900);
+    const chips = [...document.querySelectorAll('.cx-crumb .wb-chip')];
+    const out = { chips: chips.map(c => c.textContent.trim()), siblings: document.querySelectorAll('.cx-crumb .cx-crumb-sib').length };
+    chips[0] && chips[0].click(); await WB.wait(800);
+    out.title = (document.querySelector('.cx-title') || {}).value;
+    nest.crumb = out.chips.length === 2 && out.title === 'Smoke Root';
+    return out;
+  });
+  WB.check('codex nesting: Tab, Shift+Tab, Alt+Up and drag reparent', () => { if (!nest.ok) throw new Error('see the codex-nesting step'); return true; });
+  WB.check('codex views: table and cards render, tree comes back', () => { if (!nest.views) throw new Error('see the codex-views step'); return true; });
+  WB.check('codex breadcrumb: ancestors listed and clickable', () => { if (!nest.crumb) throw new Error('see the codex-breadcrumb step'); return true; });
+  WB.check('codex opens an entry page',() => { if (!/^ok/.test(smokeResult)) throw new Error(smokeResult); return true; });
 })();

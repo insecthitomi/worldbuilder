@@ -219,3 +219,151 @@ test('types: custom fields create links; built-ins cannot be deleted', () => {
     assert.throws(() => t.call('types.remove', ship.id), /Move them/);
   } finally { t.done(); }
 });
+
+/* ---------------- nesting: move, reparent, order, cycles, bulk, counts ---------------- */
+function nestWorld(t) {
+  const w = t.call('worlds.create', { name: 'Nest' });
+  const mk = (title, parentId, typeKey = 'place') => t.call('entries.create', { worldId: w.id, typeKey, title, parentId });
+  const kids = pid => t.call('entries.list', w.id, { parentId: pid, sort: 'position' }).map(e => e.title);
+  return { w, mk, kids };
+}
+
+test('nesting: moving reparents and orders siblings with fractional positions', () => {
+  const t = make();
+  try {
+    const { mk, kids } = nestWorld(t);
+    const root = mk('Root'), a = mk('A', root.id), b = mk('B', root.id), c = mk('C', root.id), other = mk('Other');
+    assert.deepEqual(kids(root.id), ['A', 'B', 'C']);
+    t.call('entries.move', c.id, { beforeId: a.id });
+    assert.deepEqual(kids(root.id), ['C', 'A', 'B']);
+    t.call('entries.move', c.id, { afterId: b.id });
+    assert.deepEqual(kids(root.id), ['A', 'B', 'C']);
+    // an insert between two neighbours writes only the moved entry (fractional)
+    const before = t.call('entries.get', a.id).position;
+    t.call('entries.move', c.id, { beforeId: b.id });
+    assert.equal(t.call('entries.get', a.id).position, before);
+    const pc = t.call('entries.get', c.id).position, pa = t.call('entries.get', a.id).position, pb = t.call('entries.get', b.id).position;
+    assert.ok(pc > pa && pc < pb && !Number.isInteger(pc), 'C sits strictly between A and B');
+    // reparent: leaves the old list, lands last in the new one
+    t.call('entries.move', a.id, { parentId: other.id });
+    assert.deepEqual(kids(root.id), ['C', 'B']);
+    assert.deepEqual(kids(other.id), ['A']);
+    t.call('entries.move', b.id, { parentId: null });
+    assert.equal(t.call('entries.get', b.id).parentId, null);
+    // many inserts into the same gap still keep a strict order (renumbering kicks in)
+    const hub = mk('Hub'), first = mk('first', hub.id);
+    mk('last', hub.id);
+    for (let i = 0; i < 60; i++) { const x = mk('n' + i, hub.id); t.call('entries.move', x.id, { afterId: first.id }); }
+    const order = kids(hub.id);
+    assert.equal(order[0], 'first');
+    assert.equal(order[order.length - 1], 'last');
+    assert.equal(new Set(order).size, 62);
+    assert.equal(order[1], 'n59');
+  } finally { t.done(); }
+});
+
+test('nesting: cycles, trashed parents and other worlds are refused, orphans cannot appear', () => {
+  const t = make();
+  try {
+    const { mk } = nestWorld(t);
+    const a = mk('A'), b = mk('B', a.id), c = mk('C', b.id);
+    assert.throws(() => t.call('entries.move', a.id, { parentId: c.id }), /inside itself/);
+    assert.throws(() => t.call('entries.move', a.id, { parentId: a.id }), /inside itself/);
+    assert.throws(() => t.call('entries.update', a.id, { parentId: b.id }), /inside itself/);
+    assert.throws(() => t.call('entries.moveMany', [b.id, c.id, a.id], { parentId: c.id }), /inside itself/);
+    assert.equal(t.call('entries.get', b.id).parentId, a.id, 'a refused move changes nothing');
+    const dead = mk('Dead'); t.call('entries.trash', dead.id);
+    assert.throws(() => t.call('entries.move', b.id, { parentId: dead.id }), /no longer exists/);
+    assert.throws(() => mk('X', dead.id), /no longer exists/);
+    const w2 = t.call('worlds.create', { name: 'Other' });
+    const foreign = t.call('entries.create', { worldId: w2.id, typeKey: 'place', title: 'Elsewhere' });
+    assert.throws(() => t.call('entries.move', b.id, { parentId: foreign.id }), /another world/);
+    assert.throws(() => t.call('entries.move', 'nope', { parentId: null }), /no longer exists/);
+  } finally { t.done(); }
+});
+
+test('nesting: indent, outdent and shift (Tab, Shift+Tab, Alt+Up/Down)', () => {
+  const t = make();
+  try {
+    const { mk, kids } = nestWorld(t);
+    const root = mk('Root'), a = mk('A', root.id), b = mk('B', root.id), c = mk('C', root.id);
+    assert.throws(() => t.call('entries.indent', a.id), /nothing above/);
+    t.call('entries.indent', b.id);
+    assert.deepEqual(kids(a.id), ['B']);
+    assert.deepEqual(kids(root.id), ['A', 'C']);
+    t.call('entries.indent', c.id);
+    assert.deepEqual(kids(a.id), ['B', 'C']);
+    t.call('entries.outdent', b.id);
+    assert.deepEqual(kids(root.id), ['A', 'B']);
+    assert.deepEqual(kids(a.id), ['C']);
+    assert.throws(() => t.call('entries.outdent', root.id), /top level/);
+    t.call('entries.shift', b.id, -1);
+    assert.deepEqual(kids(root.id), ['B', 'A']);
+    t.call('entries.shift', b.id, 1);
+    assert.deepEqual(kids(root.id), ['A', 'B']);
+    t.call('entries.shift', b.id, 1);
+    assert.deepEqual(kids(root.id), ['A', 'B'], 'already last: stays');
+  } finally { t.done(); }
+});
+
+test('nesting: bulk move keeps order, entries ride with their parent, type rules can be overridden', () => {
+  const t = make();
+  try {
+    const { w, mk, kids } = nestWorld(t);
+    const dest = mk('Dest'), p = mk('P'), p1 = mk('P1', p.id), x = mk('X'), y = mk('Y');
+    const r = t.call('entries.moveMany', [y.id, p.id, p1.id, x.id], { parentId: dest.id });
+    assert.equal(r.n, 3, 'P1 rides inside P');
+    assert.deepEqual(kids(dest.id), ['Y', 'P', 'X']);
+    assert.equal(t.call('entries.get', p1.id).parentId, p.id);
+    const z = mk('Z');
+    t.call('entries.moveMany', [z.id, x.id], { parentId: dest.id, beforeId: y.id });
+    assert.deepEqual(kids(dest.id), ['Z', 'X', 'Y', 'P']);
+    // type rules: strict refuses a character inside a place once nesting is restricted; the override still works
+    const ch = mk('Mira', null, 'character');
+    t.call('worlds.update', w.id, { settings: { allowAnyNesting: false } });
+    assert.throws(() => t.call('entries.move', ch.id, { parentId: dest.id, strict: true }), /type rules/);
+    assert.equal(t.call('entries.get', ch.id).parentId, null);
+    t.call('entries.move', ch.id, { parentId: dest.id });
+    assert.equal(t.call('entries.get', ch.id).parentId, dest.id);
+    t.call('entries.move', z.id, { parentId: x.id, strict: true });
+    t.call('worlds.update', w.id, { settings: { allowAnyNesting: true } });
+    t.call('entries.move', ch.id, { parentId: p.id, strict: true });
+    // bulk tag / retype / trash on a selection
+    t.call('entries.bulk', [x.id, y.id], { addTag: 'wild' });
+    assert.equal(t.call('entries.get', x.id).tags.length, 1);
+    const faction = t.call('types.list', w.id).find(k => k.key === 'faction');
+    t.call('entries.bulk', [x.id, y.id], { typeId: faction.id });
+    assert.equal(t.call('entries.get', y.id).typeId, faction.id);
+    t.call('entries.bulk', [x.id, y.id], { trash: true });
+    assert.ok(t.call('entries.get', y.id).deletedAt);
+  } finally { t.done(); }
+});
+
+test('nesting: descendant counts, delete-and-keep-children, duplicate subtree', () => {
+  const t = make();
+  try {
+    const { w, mk, kids } = nestWorld(t);
+    const top = mk('Top'), mid = mk('Mid', top.id), leaf1 = mk('L1', mid.id), leaf2 = mk('L2', mid.id), side = mk('Side', top.id);
+    let counts = t.call('entries.descendantCounts', w.id);
+    assert.equal(counts[top.id], 4);
+    assert.equal(counts[mid.id], 2);
+    assert.equal(counts[side.id], undefined);
+    t.call('entries.trash', leaf2.id);
+    assert.equal(t.call('entries.descendantCounts', w.id)[top.id], 3, 'trashed entries are not counted');
+    t.call('entries.restore', leaf2.id);
+    const copy = t.call('entries.duplicate', top.id, { children: true });
+    counts = t.call('entries.descendantCounts', w.id);
+    assert.equal(counts[copy.id], 4);
+    assert.equal(counts[top.id], 4);
+    assert.notEqual(copy.id, top.id);
+    // delete Mid but keep what is inside: L1 and L2 move up beside where Mid was
+    const res = t.call('entries.removeKeepChildren', mid.id);
+    assert.equal(res.promoted.length, 2);
+    const order = kids(top.id);
+    assert.deepEqual(new Set(order), new Set(['Side', 'L1', 'L2']));
+    assert.ok(order.indexOf('L1') < order.indexOf('L2'));
+    assert.ok(t.call('entries.get', mid.id).deletedAt);
+    assert.equal(t.call('entries.get', leaf1.id).deletedAt, null);
+    assert.deepEqual(t.call('entries.removeKeepChildren', side.id).promoted, []);
+  } finally { t.done(); }
+});

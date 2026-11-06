@@ -19,9 +19,30 @@
     'Sources': [['Inspiration', 'longtext'], ['Links', 'url']],
   };
 
+  /* Settings are grouped: three sections, each with a few parts. The stored/deep-linked value is the part's key (tab: 'calendar'). */
+  const SECTIONS = [
+    ['world', 'World', 'The name, summary and calendar of the open world.', [
+      ['world', 'Details', 'Name, icon, cover, summary and the defaults for new entries.'],
+      ['calendar', 'Calendar', 'Months, weeks, eras, moons and seasons: every date in the app uses it.'],
+    ]],
+    ['structure', 'Structure', 'How entries are built and connected.', [
+      ['types', 'Types & fields', 'The kinds of entry and the fields each one has.'],
+      ['people', 'People & attributes', 'Race, class, caste and any other classification of people, their attribute systems, modifiers and own words.'],
+      ['relations', 'Relations', 'The kinds of link between two entries.'],
+      ['tags', 'Tags', 'Every tag in this world: rename, merge or remove.'],
+    ]],
+    ['data', 'Data', 'Your worlds and their safety copies.', [
+      ['worlds', 'All worlds', 'Open, create, copy or delete worlds.'],
+      ['backups', 'Backups', 'Saved copies of this world: make one now or restore one.'],
+      ['data', 'Data tools', 'Move data in and out, find and replace, and clean up.'],
+    ]],
+  ];
+  const sectionOf = leaf => SECTIONS.find(s => s[3].some(p => p[0] === leaf));
+  WB.worldTabs = { sections: SECTIONS, sectionOf: leaf => { const s = sectionOf(leaf); return s ? s[0] : null; } };
+
   GK.modules.register({
     id: 'world',
-    title: 'World',
+    title: 'World settings',
     icon: '◎',
     order: 900,
     foot: true,
@@ -30,18 +51,37 @@
       const st = await WB.store(ctx, { tab: 'world' });
       const params = WB.params('world') || {};
       if (params.tab) st.patch({ tab: params.tab });
-      const tabs = [['world', 'This world'], ['calendar', 'Calendar'], ['types', 'Types & fields'], ['relations', 'Relations'], ['tags', 'Tags'], ['worlds', 'All worlds'], ['backups', 'Backups'], ['data', 'Data']];
+      const sections = WB.worldId ? SECTIONS : SECTIONS.filter(s => s[0] === 'data');
+      const leaves = WB.worldId ? null : ['worlds', 'backups', 'data'];
       const body = h('div.wd-body');
+      const sub = h('div.wd-sub');
+      const secBox = h('div.wd-tabs');
       const offs = [];
       let alive = true;
-      page.append(h('div.wd-tabs', [ui.tabs({ tabs: WB.worldId ? tabs : tabs.filter(t => ['worlds', 'backups', 'data'].includes(t[0])), value: WB.worldId ? st.get().tab : 'worlds', onChange: v => { st.patch({ tab: v }); show(v); } })]), body);
+      const leafOk = l => !!sectionOf(l) && (!leaves || leaves.includes(l));
+      const cur = () => (leafOk(st.get().tab) ? st.get().tab : (leaves ? 'worlds' : 'world'));
+      const paintSections = () => {
+        GK.clear(secBox);
+        secBox.appendChild(ui.tabs({ tabs: sections.map(s => [s[0], s[1]]), value: sectionOf(cur())[0], onChange: key => { const sec = sections.find(s => s[0] === key); show(sec[3][0][0]); } }));
+      };
+      const paintSub = () => {
+        GK.clear(sub);
+        const sec = sectionOf(cur()), parts = sec[3].filter(p => !leaves || leaves.includes(p[0]));
+        const part = parts.find(p => p[0] === cur());
+        if (parts.length > 1) sub.appendChild(h('div.wd-chips', { role: 'group', 'aria-label': sec[1] }, parts.map(p => ui.chip({ label: p[1], on: p[0] === cur(), onClick: () => show(p[0]) }))));
+        sub.appendChild(h('p.gk-small.gk-muted.wd-desc', { text: part[2] }));
+      };
       const show = tab => {
+        if (!leafOk(tab)) tab = cur();
+        st.patch({ tab });
+        paintSections(); paintSub();
         GK.clear(body);
-        const fn = { world: tabWorld, calendar: tabCalendar, types: tabTypes, relations: tabRelations, tags: tabTags, worlds: tabWorlds, backups: tabBackups, data: tabData }[tab] || tabWorld;
+        const fn = { world: tabWorld, calendar: tabCalendar, types: tabTypes, people: (b, p) => WB.traitsTab(b, p), relations: tabRelations, tags: tabTags, worlds: tabWorlds, backups: tabBackups, data: tabData }[tab] || tabWorld;
         Promise.resolve(fn(body, params)).catch(e => { body.appendChild(ui.panel({ title: 'Something went wrong', icon: '⚠', body: h('pre.gk-small', { text: String(e && e.stack || e) }) })); });
         params.typeId = params.typeId && tab === 'types' ? params.typeId : null;
       };
-      show(WB.worldId ? st.get().tab : 'worlds');
+      page.append(secBox, sub, body);
+      show(cur());
       offs.push(WB.on('world', () => { if (alive && document.activeElement && !body.contains(document.activeElement)) show(st.get().tab); }));
       return () => { alive = false; offs.forEach(f => f()); };
     },
@@ -316,7 +356,7 @@
   async function tabTags(box) {
     const tags = await WB.api('tags.list', WB.worldId);
     const save = WB.debounce(t => WB.api('tags.save', t).catch(WB.fail), 450);
-    box.appendChild(ui.panel({ title: 'Tags', icon: '#', sub: tags.length ? tags.length + ' tags' : 'Tags appear here when you add them to entries.', actions: [ui.button({ label: 'New tag', icon: '＋', small: true, onClick: async () => { const n = await ui.prompt('New tag', '', 'tag'); if (n) { await WB.api('tags.save', { worldId: WB.worldId, name: n }); GK.clear(box); tabTags(box); } } })], body: h('div.wd-tags', tags.map(t => h('div.wd-tag', { style: { '--c': t.color || 'var(--muted)' } }, [
+    box.appendChild(ui.panel({ title: 'All tags', icon: '#', sub: tags.length ? tags.length + ' tags' : 'Tags appear here when you add them to entries.', actions: [ui.button({ label: 'New tag', icon: '＋', small: true, onClick: async () => { const n = await ui.prompt('New tag', '', 'tag'); if (n) { await WB.api('tags.save', { worldId: WB.worldId, name: n }); GK.clear(box); tabTags(box); } } })], body: h('div.wd-tags', tags.map(t => h('div.wd-tag', { style: { '--c': t.color || 'var(--muted)' } }, [
       h('span.wd-tag-hash', { text: '#' }), ui.input({ value: t.name, onInput: v => { t.name = v; save(t); } }), ui.color({ value: t.color || '#9aa5b1', onInput: v => { t.color = v; save(t); } }),
       h('span.gk-small.gk-muted', { text: WB.fmt.plural(t.count, 'entry', 'entries') }),
       ui.button({ label: 'Merge into…', small: true, kind: 'ghost', onClick: ev => WB.ui.menu(tags.filter(x => x.id !== t.id).map(x => ({ label: '#' + x.name, onClick: async () => { await WB.api('tags.merge', x.id, t.id); GK.clear(box); tabTags(box); } })), ev.currentTarget) }),
@@ -343,7 +383,7 @@
         ui.button({ label: w.archived ? 'Unarchive' : 'Archive', small: true, kind: 'ghost', onClick: async () => { await WB.api('worlds.update', w.id, { archived: !w.archived }); refresh(); } }),
         ui.button({ label: 'Delete…', small: true, kind: 'ghost', onClick: async () => {
           const inp = ui.input({ placeholder: w.name });
-          const ok = await ui.dialog({ title: 'Delete “' + w.name + '”?', icon: '⚠', body: h('div.gk-stack', [h('p', { text: 'Every entry, map, file and note in this world is deleted. A backup is made first, so it can be restored from World → Backups.' }), h('p.gk-small.gk-muted', { text: 'Type the world\'s name to confirm:' }), inp]), actions: [{ label: 'Cancel', value: false }, { label: 'Delete world', kind: 'primary danger', value: true }] });
+          const ok = await ui.dialog({ title: 'Delete “' + w.name + '”?', icon: '⚠', body: h('div.gk-stack', [h('p', { text: 'Every entry, map, file and note in this world is deleted. A backup is made first, so it can be restored from World settings → Data → Backups.' }), h('p.gk-small.gk-muted', { text: 'Type the world\'s name to confirm:' }), inp]), actions: [{ label: 'Cancel', value: false }, { label: 'Delete world', kind: 'primary danger', value: true }] });
           if (!ok) return;
           if (inp.value.trim() !== w.name) return ui.toast('The name didn\'t match — nothing was deleted', 'ℹ');
           await WB.api('worlds.remove', w.id);
@@ -358,7 +398,7 @@
   async function tabBackups(box) {
     const list = await WB.api('backup.list');
     const refresh = () => { GK.clear(box); tabBackups(box); };
-    box.appendChild(ui.panel({ title: 'Backups', icon: '⛁', sub: 'A copy is made automatically once a day, and before anything risky (merging, deleting a type or a world, restoring). The last 14 daily copies are kept.', actions: [
+    box.appendChild(ui.panel({ title: 'Saved copies', icon: '⛁', sub: 'A copy is made automatically once a day, and before anything risky (merging, deleting a type or a world, restoring). The last 14 daily copies are kept.', actions: [
       ui.button({ label: 'Back up now', icon: '⛁', small: true, kind: 'primary', onClick: async () => { await WB.api('backup.create', 'Manual'); ui.toast('Backup made', '⛁'); refresh(); } }),
       ui.button({ label: 'Open folder', small: true, onClick: () => WB.api('backup.openFolder') }),
     ], body: list.length ? h('div.wd-backups', list.map(b => h('div.wd-backup', [

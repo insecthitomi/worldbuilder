@@ -14,7 +14,7 @@
   };
   function builtins() {
     const list = [];
-    for (const m of GK.modules.list().filter(m => m.nav !== false)) list.push({ id: 'go:' + m.id, label: 'Go to ' + m.title, icon: m.icon, group: 'Go to', run: () => WB.go(m.id), words: m.subtitle || '' });
+    for (const m of GK.modules.list().filter(m => m.nav !== false)) { const gi = GK.shell.groupOf(m.id), nm = gi ? (gi.group.members.length > 1 ? gi.group.title + ' / ' + gi.label : gi.group.title === gi.label ? gi.label : gi.label) : m.title; list.push({ id: 'go:' + m.id, label: 'Go to ' + nm, icon: m.icon, group: 'Go to', run: () => WB.go(m.id), words: (m.title + ' ' + (gi ? gi.group.title + ' ' + gi.label : '') + ' ' + (m.subtitle || '')) }); }
     for (const t of WB.typeList()) list.push({ id: 'new:' + t.key, label: 'New ' + t.name.toLowerCase(), icon: t.icon, group: 'Create', run: () => WB.ui.createDialog({ type: t.key }) });
     list.push(
       { id: 'capture', label: 'Quick capture', icon: '✚', keys: 'Ctrl+Shift+N', group: 'Create', run: () => WB.capture() },
@@ -226,7 +226,7 @@
   WB.SHORTCUTS = [['Ctrl+K', 'Search everything, run commands, roll dice'], ['Ctrl+N', 'New entry'], ['Ctrl+Shift+N', 'Quick capture'], ['Alt+← / Alt+→', 'Back / forward'],
     ['Ctrl+Click', 'Peek at an entry without leaving'], ['@ or [[', 'Link an entry while writing (or create it)'], ['/ at the start of a line', 'Insert a heading, table, callout, secret…'], ['Ctrl+Shift+S', 'Mark text as secret'], ['Ctrl+K (in text)', 'Web link'],
     ['# / ## + space', 'Heading / subheading'], ['- or 1. + space', 'Lists'], ['> + space', 'Quote'], ['! + space', 'Callout'], ['---', 'Divider'],
-    ['Ctrl+Shift+F', 'Focus mode for writing'], ['Ctrl+1…9', 'Jump to a screen'], ['Ctrl+,', 'Appearance & preferences'], ['F2', 'Rename the open entry'], ['Delete', 'Move the selected entry to the trash'],
+    ['Ctrl+Shift+F', 'Focus mode for writing'], ['Ctrl+1…9', 'Jump to a section of the sidebar'], ['Ctrl+,', 'Appearance & preferences'], ['F2', 'Rename the open entry'], ['Delete', 'Move the selected entry to the trash'],
     ['F1', 'The Guide: what you can do, by purpose'], ['Shift+F1', 'This list']];
   function shortcuts() {
     ui.dialog({ title: 'Keyboard shortcuts', icon: '⌨', body: h('div.wb-shortcuts', WB.SHORTCUTS.map(([k, d]) => h('div.wb-kv-row', [WB.ui.kbd(k), h('span', { text: d })]))) });

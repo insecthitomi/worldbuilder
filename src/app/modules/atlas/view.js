@@ -139,7 +139,10 @@
       g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 24 * v.ui; g.shadowOffsetY = 6 * v.ui;
       g.fillStyle = '#e9dcbb'; g.fillRect(t.x, t.y, mw, mh);
       g.restore();
-      if (v.img && v.img.complete && v.img.naturalWidth) {
+      if (v.baseCanvas) {
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = t.k < 1.5 ? 'high' : 'medium';
+        g.drawImage(v.baseCanvas, t.x, t.y, mw, mh);
+      } else if (v.img && v.img.complete && v.img.naturalWidth) {
         g.imageSmoothingEnabled = true; g.imageSmoothingQuality = t.k < 1.5 ? 'high' : 'medium';
         g.drawImage(v.img, t.x, t.y, mw, mh);
       } else {
@@ -147,18 +150,23 @@
       }
       g.save();
       g.beginPath(); g.rect(t.x, t.y, mw, mh); g.clip();
+      if (v.under) v.under(g, v);
       drawGrid();
       if (Geo().isPlanet(D) && v.opt.graticule) drawGraticule();
       const shown = v.shown();
       for (const it of shown) if (it.kind === 'region') drawRegion(it);
       for (const it of shown) if (it.kind === 'path') drawPath(it);
+      if (v.mid) v.mid(g, v);
       if (v.opt.regionLabels !== false) {
         const pinsS = shown.filter(it => it.kind === 'pin').map(it => { const [x, y] = v.toScreen(it.x, it.y); return [x, y, v.pinRadius(it)]; });
         for (const it of shown) if (it.kind === 'region') regionLabel(it, pinsS);
       }
       for (const it of shown) if (it.kind === 'label') drawLabel(it);
       g.restore();
+      if (v.opt.pinDim != null && v.opt.pinDim < 1) g.globalAlpha = v.opt.pinDim;
       drawPins(shown.filter(it => it.kind === 'pin'));
+      g.globalAlpha = 1;
+      if (v.opt.multi && v.opt.multi.size) drawMulti();
       const sel = v.opt.selected && v.items.find(i => i.id === v.opt.selected);
       if (sel && v.opt.handles && (sel.kind === 'region' || sel.kind === 'path')) drawHandles(sel);
       if (v.overlay) { g.save(); v.overlay(g, v); g.restore(); }
@@ -217,7 +225,7 @@
     function drawRegion(it) {
       if (it.points.length < 3) return;
       const { g } = v, c = V.colorOf(it), sel = v.opt.selected === it.id, hov = v.opt.hover === it.id, fade = faded(it);
-      const fill = it.style.fill == null ? .22 : it.style.fill;
+      const fill = (it.style.fill == null ? .22 : it.style.fill) * (v.opt.regionFill == null ? 1 : v.opt.regionFill);
       g.save();
       if (fade) g.globalAlpha = .35;
       tracePoly(it.points, true);
@@ -226,7 +234,7 @@
       // a band of colour just inside the border: the classic way atlases draw country lines
       g.save(); g.clip();
       g.lineWidth = Math.max(4, Math.min(14, 9 * v.ui * Math.sqrt(v.t.k / v.fitK())));
-      g.strokeStyle = rgba(c, .38); g.lineJoin = 'round'; g.stroke();
+      g.strokeStyle = rgba(c, .38 * (v.opt.regionFill == null ? 1 : Math.max(.3, v.opt.regionFill))); g.lineJoin = 'round'; g.stroke();
       g.restore();
       g.lineJoin = 'round';
       g.lineWidth = (sel ? 2.6 : 1.6) * v.ui;
@@ -324,7 +332,19 @@
       }
       g.restore();
     }
+    function drawMulti() {
+      const { g } = v;
+      g.save(); g.lineWidth = 1.6 * v.ui; g.setLineDash([5 * v.ui, 3 * v.ui]); g.strokeStyle = '#fff'; g.fillStyle = 'rgba(80,160,255,.14)';
+      for (const it of v.items) {
+        if (!v.opt.multi.has(it.id) || !v.visible(it)) continue;
+        const b = root.WBField.itemBox(it), p0 = v.toScreen(b.x0, b.y0), p1 = v.toScreen(b.x1, b.y1), pad = (it.kind === 'pin' ? v.pinRadius(it) + 5 : it.kind === 'label' ? 16 * v.ui : 6) * (it.kind === 'pin' ? 1 : 1);
+        g.beginPath(); g.roundRect(p0[0] - pad, p0[1] - pad, p1[0] - p0[0] + pad * 2, p1[1] - p0[1] + pad * 2, 5); g.fill(); g.stroke();
+      }
+      g.restore();
+    }
     function drawLabel(it) {
+      if (it.points && it.points.length > 1 && WB.atlasLabels) return WB.atlasLabels.drawAlong(v, it, { SERIF, lum, faded: faded(it) });
+      if (it.style.curve && WB.atlasLabels) return WB.atlasLabels.drawArc(v, it, { SERIF, lum, faded: faded(it) });
       const { g, t } = v, st = it.style, size = (st.size || 18) * t.k;
       if (size < 6 * v.ui) return;
       const text0 = it.label || (it.entry && it.entry.title) || '';
@@ -468,6 +488,7 @@
         if (it.kind !== 'label') continue;
         const size = (it.style.size || 18) * v.t.k;
         if (size < 6 * v.ui) continue;
+        if (it.points && it.points.length > 1) { if (G.nearestEdge(mx, my, it.points, false).d * v.t.k <= size * .7 + 4) return { item: it, part: 'body' }; continue; }
         const text = it.label || (it.entry && it.entry.title) || '';
         v.g.font = '600 ' + size + 'px ' + SERIF;
         const tw = Math.max(...text.split('\n').map(l => v.g.measureText(it.style.caps ? l.toUpperCase() : l).width)) * (it.style.caps ? 1.15 : 1);

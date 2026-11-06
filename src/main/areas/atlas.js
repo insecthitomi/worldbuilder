@@ -26,7 +26,7 @@ const PRECS = ['year', 'month', 'day', 'time'];
 /* style keys kept, by value kind */
 const STYLE = {
   color: 's', icon: 's', kind: 's', mode: 's', font: 's',
-  size: 'n', fill: 'n', width: 'n', opacity: 'n', angle: 'n', labelSize: 'n',
+  size: 'n', fill: 'n', width: 'n', opacity: 'n', angle: 'n', labelSize: 'n', curve: 'n',
   dashed: 'b', italic: 'b', hideLabel: 'b', caps: 'b',
 };
 function cleanStyle(s) {
@@ -136,6 +136,11 @@ function handlers(ctx) {
     const ids = new Set(list.map(e => e.id)), settings = settingsOf(worldId);
     return list.map(e => {
       const d = G.mapData(data.get(e.id), settings), pin = pinned.get(e.id);
+      // the painted terrain, regions and stamps are big and only the open map needs them: the list carries a stub
+      if (d.terrain) d.terrain = { w: d.terrain.w, h: d.terrain.h, seed: d.terrain.seed, has: true };
+      if (d.paint) d.paint = { w: d.paint.w, h: d.paint.h, has: true };
+      if (d.stamps) d.stamps = d.stamps.length;
+      if (d.deposits) d.deposits = d.deposits.length;
       const parentMap = pin && pin.mapId !== e.id ? pin.mapId : e.parentId && ids.has(e.parentId) ? e.parentId : null;
       const n = k => counts.get(e.id + ':' + k) || 0;
       return Object.assign(e, {

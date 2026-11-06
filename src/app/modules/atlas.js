@@ -5,7 +5,9 @@
   'use strict';
   const { h, ui } = GK;
   const BASE = 'src/app/modules/atlas/';
-  const load = () => Promise.all([WB.loadScript('src/main/lib/atlas-geo.js'), WB.loadScript(BASE + 'icons.js')]).then(() => WB.loadScript(BASE + 'view.js'));
+  const load = () => Promise.all([WB.loadScript('src/main/lib/atlas-geo.js'), WB.loadScript(BASE + 'icons.js'), WB.loadScript(BASE + 'field.js')]).then(() => Promise.all([WB.loadScript(BASE + 'render.js'), WB.loadScript(BASE + 'labels.js')])).then(() => WB.loadScript(BASE + 'view.js'));
+  /** the editing layer: view modes, toolbox, Map panel (loaded when a map opens) */
+  const loadUI = () => load().then(() => WB.loadScript(BASE + 'modes.js')).then(() => Promise.all([WB.loadScript(BASE + 'tools.js'), WB.loadScript(BASE + 'panel.js')]));
   const loadExtra = name => load().then(() => WB.loadScript(BASE + name + '.js'));
   const Geo = () => window.WBGeo;
   const V = () => WB.atlasView;
@@ -141,6 +143,72 @@
     return ok ? 'ok: globe drawn' : smokeErr('the globe did not open');
   });
 
+  /* smoke: view modes, a brush stroke with undo, and the economy view's empty state, on a generated map */
+  async function smokeTerrainMap(title) {
+    await load();
+    const f = window.WBField.generate(window.WBField.norm({ mode: 'island', seed: 3 }), 800, 500);
+    const e = await createMap({ title, data: { width: 800, height: 500, unit: 'miles', unitsPerPx: 2, terrain: window.WBField.encode(f), deposits: f.deposits }, open: false });
+    await WB.go('atlas', { mapId: e.id });
+    await WB.wait(900);
+    return e;
+  }
+  /** leave the map before it is purged, so the screen does not ask for a map that is gone */
+  const smokeLeave = async e => { try { await WB.atlas._state().act.showGallery(); } catch { } await WB.api('entries.purge', e.id).catch(() => null); };
+  const baseSig = st => { const c = st.view.baseCanvas; if (!c) return -1; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 0; i < d.length; i += 61) s = (s * 31 + d[i] + d[i + 1] * 3) % 1000003; return s; };
+  WB.smoke('atlas-view-modes', async () => {
+    const e = await smokeTerrainMap('Smoke terrain');
+    try {
+      const st = WB.atlas._state();
+      if (!st || !st.modes || !st.modes.hasField()) return smokeErr('the generated map has no terrain field');
+      const sigs = {};
+      for (const m of ['political', 'terrain', 'relief', 'climate', 'resources']) { st.panel.set(m); await WB.wait(120); sigs[m] = baseSig(st); }
+      st.panel.set('climate', null, 'rain'); sigs.rain = baseSig(st);
+      st.panel.set('terrain', 'parchment'); sigs.parchment = baseSig(st);
+      const distinct = new Set(Object.values(sigs));
+      if (distinct.size < 5) return smokeErr('view modes look the same: ' + JSON.stringify(sigs));
+      st.panel.set('travel'); await WB.wait(80);
+      const p = [400, 250]; st.modes.setOrigin(p);
+      const near = st.modes.daysTo([p[0] + 20, p[1]]), far = st.modes.daysTo([p[0] + 120, p[1]]);
+      if (near != null && far != null && !(far > near)) return smokeErr('travel time does not grow with distance');
+      return { modes: distinct.size, travel: far != null ? Math.round(far * 10) / 10 + ' days' : 'sea' };
+    } finally { await smokeLeave(e); }
+  });
+  WB.smoke('atlas-brush-undo', async () => {
+    const e = await smokeTerrainMap('Smoke brush');
+    try {
+      const st = WB.atlas._state(), M = st.modes, T = st.tools, f = M.field;
+      st.panel.set('terrain');
+      st.act.setTool('raise'); T.opt.size = 60; T.opt.strength = 1;
+      const sum = a => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s; };
+      const before = sum(f.elev), sig0 = baseSig(st), n0 = st.hist.length;
+      await T.down({ altKey: false }, 0, 0, 400, 250);
+      for (let k = 1; k <= 5; k++) T.move({}, 0, 0, 400 + k * 20, 250, false);
+      T.up({});
+      const after = sum(f.elev);
+      if (!(after > before + 10)) return smokeErr('the raise brush did not change the terrain');
+      if (st.hist.length !== n0 + 1) return smokeErr('the stroke is not one undo step');
+      if (baseSig(st) === sig0) return smokeErr('the picture did not follow the edit');
+      await st.hist[st.hist.length - 1].undo();
+      if (Math.abs(sum(f.elev) - before) > 1e-3) return smokeErr('undo did not restore the terrain');
+      T.flush();
+      return { raised: Math.round(after - before), undone: true };
+    } finally { await smokeLeave(e); }
+  });
+  WB.smoke('atlas-economy-empty', async () => {
+    const e = await smokeTerrainMap('Smoke economy');
+    try {
+      const st = WB.atlas._state();
+      st.panel.set('economy'); await WB.wait(120);
+      const card = document.querySelector('.wb-at-empty-eco');
+      if (!card || card.hidden || !/Maps & Sim/.test(card.textContent)) return smokeErr('no explanation when there is no simulation');
+      st.data.sim = { result: { day: 3, nodes: [{ itemId: 'x', x: 300, y: 200, population: 500, wealth: 2, surplus: {}, shortage: { grain: 4 } }, { itemId: 'y', x: 500, y: 260, population: 900, wealth: 8, surplus: { grain: 9 }, shortage: {} }], flows: [{ fromItemId: 'y', toItemId: 'x', routeItemId: null, resource: 'grain', amount: 5 }], resources: [{ name: 'grain', color: '#d1b447' }] } };
+      st.panel.set('economy'); await WB.wait(120);
+      if (document.querySelector('.wb-at-empty-eco:not([hidden])')) return smokeErr('the empty state stays when a simulation exists');
+      st.view.render();
+      return 'ok: empty state, then nodes and flows';
+    } finally { await smokeLeave(e); }
+  });
+
   /* ---------------- the screen ---------------- */
   const TOOLS = [
     ['select', 'Select & move', '⬚', 'V', 'Click to select, drag to move, drag corners to reshape. Double-click a pin to open its sub-map.'],
@@ -165,8 +233,8 @@
       page.appendChild(WB.ui.empty({ icon: '⌖', title: 'No world yet', text: 'Maps belong to a world. Create one — or open the example world to explore its coast and city maps.', actions: [ui.button({ label: 'Create a world', kind: 'primary', onClick: () => WB.newWorld() })] }));
       return cleanup;
     }
-    await load();
-    const DEFAULTS = { mapId: null, views: {}, side: 'items', sideOpen: true, days: {}, allTimes: {}, timeOpen: {}, legend: true, mode: {}, recent: [] };
+    await loadUI();
+    const DEFAULTS = { mapId: null, views: {}, side: 'items', sideOpen: true, days: {}, allTimes: {}, timeOpen: {}, legend: true, mode: {}, recent: [], vmode: {}, tools: {}, snap: {}, mapSections: { view: true, layers: true, settings: false }, contents: 'items' };
     const store = await (WB.store ? WB.store(ctx, DEFAULTS) : ctx.store(DEFAULTS));
     const P = store.get();
     const params = WB.params('atlas') || {};
@@ -193,7 +261,9 @@
     const timeBar = h('div.wb-at-time.wb-at-float');
     const legendBox = h('div.wb-at-legend.wb-at-float');
     const measureCard = h('div.wb-at-measure.wb-at-float');
-    const stageInner = h('div.wb-at-stage-in', [canvas, toolsBar, hint, zoomBar, h('div.wb-at-bl', [coords, scaleBar]), legendBox, measureCard, timeBar, tip]);
+    const optsBar = h('div.wb-at-opts.wb-at-float', { hidden: true });
+    const banner = h('div.wb-at-banner.wb-at-float', { hidden: true });
+    const stageInner = h('div.wb-at-stage-in', [canvas, toolsBar, h('div.wb-at-top', [banner, optsBar, hint]), zoomBar, h('div.wb-at-bl', [coords, scaleBar]), legendBox, measureCard, timeBar, tip]);
     const stage = ui.panel({ material: 'clear', cls: 'wb-at-stage', body: [stageInner] });
     const insp = h('section.gk-panel.wb-at-insp');
     const body = h('div.wb-at-body', [side, stage, insp]);
@@ -204,6 +274,30 @@
     view.overlay = drawOverlay;
     view.onDraw = () => { paintScale(); };
 
+    /* ---------- view modes, toolbox, Map panel (modes.js, tools.js, panel.js) ---------- */
+    const M = S.modes = WB.atlasModes.create({ S, view, onBase: () => { if (S.globe) S.globe.refresh(); } });
+    const T = S.tools = WB.atlasTools.create({
+      S, view, canvas, P, store, M, ro,
+      put: p => put(p), record: (u, r) => record(u, r), select: id => select(id), reloadItems: () => reloadItems(), upsert: it => upsertLocal(it), strip: it => strip(it),
+      undo: () => undo(), redo: () => redo(), setTool: id => setTool(id), paintSide: () => paintSide(), paintLegend: () => paintLegend(), patchData: p => patchData(p),
+      paintOptions: () => T.paintOptions(optsBar), refreshChrome: () => { paintTools(); T.paintOptions(optsBar); PN.banner(); },
+      store: store,
+    });
+    const PN = S.panel = WB.atlasPanel.create({
+      S, view, P, store, M, ro, tools: T, record: (u, r) => record(u, r), bannerEl: banner, setTool: id => setTool(id), openGenerator: o => openGenerator(o), refreshAll: () => refreshAll(),
+      paintHead: () => paintHead(), paintOptions: () => T.paintOptions(optsBar), paintLegend: () => paintLegend(), paintMapPanel: () => paintSide(),
+      layersInto: box => paintLayersTab(box, true), settingsInto: box => paintSettings(box),
+    });
+    window.addEventListener('beforeunload', T.flush);
+    subs.push(() => { T.flush(); window.removeEventListener('beforeunload', T.flush); });
+    /** save map data that is not an item (terrain, painted regions, stamps, deposits) without repainting the screen */
+    async function patchData(patch) {
+      if (!S.map) return;
+      Object.assign(S.data, patch);
+      S.quietUntil = Date.now() + 1800;
+      await WB.api('entries.update', S.map.id, { dataPatch: patch });
+    }
+
     /* ---------- loading ---------- */
     async function loadMaps() {
       S.maps = (await WB.api('atlas.maps', WB.worldId)).filter(m => WB.visible(m));
@@ -212,6 +306,7 @@
     async function openMap(id, { itemId, keepView, mode } = {}) {
       const m = S.maps.find(x => x.id === id);
       if (!m) return showGallery();
+      await T.flush();   // unsaved terrain strokes reach the map entry before it is read again
       const res = await WB.api('atlas.map', id);
       const sameMap = S.map && S.map.id === id;
       S.map = res.entry; S.data = res.data; S.items = res.items; S.gallery = false;
@@ -225,6 +320,8 @@
       S.img = img;
       view.setMap(S.data, img);
       view.setItems(S.items);
+      if (!sameMap) { T.clearMulti(); T.draft = null; }
+      M.load(S.data); view.baseCanvas = null; PN.restore();
       store.patch({ mapId: id, recent: [id].concat((P.recent || []).filter(x => x !== id)).slice(0, 8) });
       body.hidden = false; gallery.hidden = true;
       paintAll();
@@ -340,12 +437,12 @@
       });
       addTo(findBox, h('span.wb-at-findico', { text: '⌕' }), inp);
       if (Geo().isPlanet(S.data)) addTo(modeBox, ui.segmented({ value: S.mode, options: [['flat', 'Flat', 'The whole map as an image'], ['globe', 'Globe', 'The map wrapped on a sphere: drag to spin']], onChange: v => setMode(v) }));
+      PN.viewButton(modeBox);
       addTo(headActions, 
-        ro() ? null : ui.button({ label: 'Map', icon: '⚙', small: true, title: 'Map settings: image, scale, projection, grid, travel speeds', onClick: () => { S.settingsOpen = !S.settingsOpen; if (S.settingsOpen) select(null); else paintInspector(); } }),
+        ui.button({ label: 'Map', icon: '⚙', small: true, title: 'The Map panel: view, layers and settings (image, scale, projection, grid, travel speeds)', onClick: () => { P.side = 'map'; store.patch({ side: 'map' }); if (!P.sideOpen) toggleSide(true); else paintSide(); } }),
         ui.button({ label: 'Export', icon: '⤓', small: true, title: 'Save the map as a PNG image in the Library', onClick: e => exportMenu(e.currentTarget) }),
         ui.button({ icon: '⋯', small: true, title: 'More', onClick: e => moreMenu(e.currentTarget) }),
       );
-      if (S.settingsOpen) headActions.firstChild && headActions.firstChild.classList.add('on');
     }
     function mapMenu(at) {
       const items = [{ header: 'Maps' }];
@@ -409,7 +506,8 @@
       ], at);
     }
     function shortcuts() {
-      const rows = TOOLS.map(t => [t[3], t[1]]).concat([['F', 'Fit the map'], ['+ / −', 'Zoom'], ['Wheel', 'Zoom at the cursor'], ['Drag / Space+drag', 'Pan'], ['Enter / double-click', 'Finish a territory or route'], ['Backspace', 'Remove the last corner while drawing'], ['Delete', 'Remove the selected item'], ['Ctrl+D', 'Duplicate'], ['Arrows', 'Nudge (Shift = more)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], [', / .', 'Time: a year back / forward'], ['Ctrl+F', 'Find on the map'], ['Right-click', 'Pin here, found a settlement, border history…']]);
+      const rows = TOOLS.map(t => [t[3], t[1]]).concat([['F', 'Fit the map'], ['+ / −', 'Zoom'], ['Wheel', 'Zoom at the cursor'], ['Drag / Space+drag', 'Pan'], ['Enter / double-click', 'Finish a territory or route'], ['Backspace', 'Remove the last corner while drawing'], ['Delete', 'Remove the selected item'], ['Ctrl+D', 'Duplicate'], ['Arrows', 'Nudge (Shift = more)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], [', / .', 'Time: a year back / forward'], ['Ctrl+F', 'Find on the map'], ['Right-click', 'Pin here, found a settlement, border history…'],
+        ['S', 'Symbols: stamp mountains, forests, towns'], ['1 / 2 / 3', 'Terrain: raise / lower / smooth'], ['4 / 5 / 6', 'Terrain: add water / remove water / smooth coastline'], ['7 / 8', 'Paint a biome / fill a biome'], ['9', 'Paint a region with a brush'], ['I / O', 'River (runs downhill) / road (cheapest ground)'], ['D', 'Place a resource deposit'], ['E', 'Eraser: stamps, deposits, painted regions'], ['[ / ]', 'Brush smaller / bigger'], ['{ / }', 'Brush weaker / stronger (Shift + [ ])'], ['G', 'Snap to the grid on / off'], ['Shift+click / Shift+drag', 'Add to the selection / draw a selection box'], ['Ctrl+A', 'Select everything on the map'], ['Alt', 'Rub out while painting a biome or region; straight stretch for roads']]);
       ui.dialog({ title: 'Atlas shortcuts', icon: '⌨', body: h('div.wb-shortcuts', rows.map(([k, d]) => h('div.wb-kv-row', [WB.ui.kbd(k), h('span', { text: d })]))) });
     }
 
@@ -453,15 +551,18 @@
         if (typing != null) { const i = side.querySelector('.wb-search-input'); if (i) { i.focus(); try { i.setSelectionRange(typing, typing); } catch { } } }
       });
       side.classList.toggle('closed', !P.sideOpen);
-      const tabs = [['items', 'On this map'], ['entries', 'Place'], ['layers', 'Layers']].filter(t => !(ro() && t[0] === 'entries'));
+      if (P.side === 'entries') { P.side = 'items'; P.contents = 'entries'; } else if (P.side === 'layers') P.side = 'map';
+      const tabs = [['items', 'On this map'], ['map', 'Map']];
       const tab = tabs.find(t => t[0] === P.side) ? P.side : 'items';
       addTo(side, h('div.wb-at-sidehead', [ui.tabs({ tabs, value: tab, onChange: v => { P.side = v; store.patch({ side: v }); paintSide(); } }),
         ui.button({ icon: '⇤', small: true, kind: 'ghost', title: 'Hide the side panel', onClick: () => toggleSide(false) })]));
       const content = h('div.wb-at-sidebody');
       addTo(side, content);
-      if (tab === 'items') paintItemsTab(content);
-      else if (tab === 'entries') paintEntriesTab(content);
-      else paintLayersTab(content);
+      if (tab === 'items') {
+        const sub = ro() ? 'items' : (P.contents || 'items');
+        if (!ro()) addTo(content, ui.segmented({ value: sub, options: [['items', 'On this map'], ['entries', 'Add from the Codex', 'Drag entries onto the map, or click one and then the map']], onChange: v => { P.contents = v; store.patch({ contents: v }); paintSide(); } }));
+        if (sub === 'entries') paintEntriesTab(content); else paintItemsTab(content);
+      } else PN.paintMapPanel(content);
     }
     function toggleSide(on) { P.sideOpen = on; store.patch({ sideOpen: on }); body.classList.toggle('side-closed', !on); paintSide(); requestAnimationFrame(() => { view.measure(); view.draw(); }); }
     const kindName = it => ({ pin: 'Pin', region: 'Territory', path: 'Route', label: 'Label' })[it.kind];
@@ -500,7 +601,7 @@
             list.appendChild(row);
           }
         }
-        if (!any) list.appendChild(WB.ui.empty({ icon: '📍', title: q ? 'Nothing matches' : 'Nothing on this map yet', text: q ? '' : ro() ? 'This map has no places you may see yet.' : 'Pick the pin tool (P) and click the map, or drag entries from the Place tab onto it.' }));
+        if (!any) list.appendChild(WB.ui.empty({ icon: '📍', title: q ? 'Nothing matches' : 'Nothing on this map yet', text: q ? '' : ro() ? 'This map has no places you may see yet.' : 'Pick the pin tool (P) and click the map, or use Add from the Codex to drag entries onto it.' }));
       };
       addTo(box, WB.ui.search({ placeholder: 'Filter this map', value: itemsFilter, onInput: v => { itemsFilter = v; paint(); } }), list);
       WB.ui.listKeys(list, { rows: '.wb-at-row' });
@@ -561,6 +662,7 @@
           ui.segmented({ value: G.type, options: [['none', 'None'], ['hex', 'Hex'], ['square', 'Square']], onChange: v => setData({ grid: Object.assign({}, G, { type: v }) }) }),
           G.type !== 'none' ? ui.slider({ min: 8, max: 400, step: 2, value: G.size, format: v => v + ' px' + (perPx ? ' ≈ ' + Geo().fmtNum(v * perPx) + ' ' + Geo().UNITS[D.unit].short : ''), onInput: WB.debounce(v => setData({ grid: Object.assign({}, S.data.grid, { size: v }) }), 160) }) : null,
           G.type !== 'none' ? ui.slider({ min: .1, max: 1, step: .05, value: G.opacity, format: v => Math.round(v * 100) + '%', onInput: WB.debounce(v => setData({ grid: Object.assign({}, S.data.grid, { opacity: v }) }), 160) }) : null,
+          G.type !== 'none' ? ui.field({ label: 'Snap to the grid (G)', hint: 'Pins, labels, corners and stamps land on grid points', inline: true, control: ui.toggle({ value: T.snapOn(), onChange: v => T.setSnap(v) }) }) : null,
         ]));
       }
       // territory sizes at the current date
@@ -590,32 +692,28 @@
 
     /* ---------- stage chrome ---------- */
     function paintTools() {
-      GK.clear(toolsBar);
-      for (const [id, label, icon, key] of TOOLS) {
-        if (ro() && EDIT_TOOLS.has(id)) continue;
-        const b = h('button.wb-at-tool', { type: 'button', class: S.tool === id ? 'on' : '', 'aria-pressed': String(S.tool === id), title: label + ' (' + key + ')', onclick: () => setTool(id) }, [h('span', { text: icon })]);
-        toolsBar.appendChild(b);
-      }
-      toolsBar.appendChild(h('div.wb-at-toolsep'));
-      toolsBar.appendChild(h('button.wb-at-tool', { type: 'button', title: (P.sideOpen ? 'Hide' : 'Show') + ' the side panel', onclick: () => toggleSide(!P.sideOpen) }, [h('span', { text: P.sideOpen ? '⇤' : '⇥' })]));
+      const first = TOOLS.filter(t => !(ro() && EDIT_TOOLS.has(t[0])) && ['select', 'pin', 'label', 'region', 'path', 'measure', 'calibrate'].includes(t[0]));
+      T.paintRail(toolsBar, { first, last: [['side', (P.sideOpen ? 'Hide' : 'Show') + ' the side panel', P.sideOpen ? '⇤' : '⇥', '', () => toggleSide(!P.sideOpen)]] });
       GK.clear(zoomBar);
       addTo(zoomBar, 
         h('button.wb-at-tool', { type: 'button', title: 'Zoom in (+)', onclick: () => { zoomBy(1.4); } }, [h('span', { text: '＋' })]),
         h('button.wb-at-tool', { type: 'button', title: 'Zoom out (−)', onclick: () => { zoomBy(1 / 1.4); } }, [h('span', { text: '－' })]),
         h('button.wb-at-tool', { type: 'button', title: 'Fit the map (F)', onclick: () => { if (S.globe) S.globe.reset(); else { view.fit(); saveView(); } } }, [h('span', { text: '⤢' })]),
       );
-      const t = TOOLS.find(x => x[0] === S.tool);
-      hint.textContent = S.tool !== 'select' ? t[4] : S.items.length || ro() ? '' : 'An empty map: P pins a place, R draws a territory, L a route, T a name — or drag entries here from the Place tab.';
-      hint.hidden = !hint.textContent;
+      const t = TOOLS.find(x => x[0] === S.tool) || TOOLS[0];
+      hint.textContent = T.has(S.tool) ? T.hint(S.tool) : S.tool !== 'select' ? t[4] : S.items.length || ro() ? '' : 'An empty map: P pins a place, R draws a territory, L a route, T a name — or drag entries here from Add from the Codex.';
+      hint.hidden = !hint.textContent || (T.has(S.tool) && !ro());
     }
     function zoomBy(f) { if (S.globe) return S.globe.zoom(f); view.zoomAt(view.w / 2, view.h / 2, f); saveView(); }
     function setTool(id) {
-      if (ro() && EDIT_TOOLS.has(id)) return;
+      if (ro() && (EDIT_TOOLS.has(id) || T.has(id))) return;
       if (S.mode === 'globe' && id !== 'select') setMode('flat');
+      if (T.draft) T.draft = null;
       S.tool = id; S.draft = null; S.place = id === 'pin' ? S.place : null;
       if (id !== 'measure') { S.measure = null; paintMeasure(); }
       canvas.dataset.tool = id;
-      paintTools(); view.draw();
+      canvas.style.cursor = T.has(id) ? 'crosshair' : '';
+      paintTools(); T.paintOptions(optsBar); view.draw();
       canvas.focus();
     }
     function armPlace(e) { S.place = e; setTool('pin'); S.place = e; hint.textContent = 'Click the map to place “' + e.title + '”. Esc cancels.'; hint.hidden = false; }
@@ -636,12 +734,14 @@
       if (mx < 0 || my < 0 || mx > D.width || my > D.height) { coords.textContent = ''; return; }
       if (Geo().isPlanet(D)) { const [lon, lat] = Geo().lonLat(mx, my, D.width, D.height); coords.textContent = Math.abs(lat).toFixed(2) + '°' + (lat >= 0 ? 'N' : 'S') + '  ' + Math.abs(lon).toFixed(2) + '°' + (lon >= 0 ? 'E' : 'W'); }
       else coords.textContent = 'x ' + Math.round(mx) + '  y ' + Math.round(my);
+      const extra = M.mode === 'travel' && M.travel.origin ? (() => { const d = M.daysTo([mx, my]); return d == null ? '' : '  ·  ' + Geo().fmtDuration(d, 8) + ' from the start'; })() : M.field ? '  ·  ' + M.describe(mx, my) : '';
+      coords.textContent += extra;
     }
 
     /* ---------- legend ---------- */
     function paintLegend() {
       GK.clear(legendBox);
-      legendBox.hidden = P.legend === false || !S.map || S.mode === 'globe';
+      legendBox.hidden = P.legend === false || !S.map || S.mode === 'globe' || M.mode === 'economy';
       if (legendBox.hidden) return;
       const shown = view.shown();
       const rows = [];
@@ -751,12 +851,11 @@
       if (flushInsp) { flushInsp(); flushInsp = null; }
       GK.clear(insp);
       const it = selItem();
-      const show = !!S.map && !S.gallery && (it ? !ro() : S.settingsOpen && !ro());
+      const show = !!S.map && !S.gallery && !!it && !ro();
       insp.hidden = !show;
       body.classList.toggle('has-insp', show);
       requestAnimationFrame(() => { if (view.measure()) view.draw(); });
       if (!show) { if (it && ro()) cardFor(it); return; }
-      if (!it) return paintSettings();
       const scroll = h('div.wb-at-inspscroll');
       addTo(insp, h('div.wb-at-insphead', [itemIcon(it), h('div.gk-grow', [h('h3.gk-ellipsis', { text: V().titleOf(it) }), h('div.gk-small.gk-muted', { text: kindName(it) + (it.entry ? ' · ' + ((WB.typeOf(it.entry) || {}).name || '') : '') })]),
         ui.button({ icon: '✕', small: true, kind: 'ghost', title: 'Close (Esc)', onClick: () => select(null) })]), scroll);
@@ -881,10 +980,9 @@
       return h('div.wb-at-traveltbl', [h('div.wb-at-dist', { text: Geo().fmtNum(dist) + ' ' + u + (Geo().isPlanet(D) ? ' (great circle)' : '') }),
         ...modes.map(m => h('div.wb-at-mode', [h('span', { text: m.icon + ' ' + m.label }), h('span.gk-faint', { text: Geo().fmtNum(m.perDay) + ' ' + u + '/day' }), h('b', { text: Geo().fmtDuration(dist / m.perDay, m.hours) })]))]);
     }
-    function paintSettings() {
+    /** the map's own settings, drawn into a box of the Map panel */
+    function paintSettings(scroll) {
       const D = S.data, m = S.map;
-      const scroll = h('div.wb-at-inspscroll');
-      addTo(insp, h('div.wb-at-insphead', [h('span.wb-at-ico', { style: { '--c': '#6dbb6f' }, text: '⚙' }), h('div.gk-grow', [h('h3', { text: 'Map settings' }), h('div.gk-small.gk-muted', { text: m.title })]), ui.button({ icon: '✕', small: true, kind: 'ghost', title: 'Close', onClick: () => { S.settingsOpen = false; paintInspector(); paintHead(); } })]), scroll);
       const titleIn = ui.input({ value: m.title, onChange: v => WB.api('entries.update', m.id, { title: v.trim() || m.title }).then(() => refreshAll()) });
       addTo(scroll, ui.field({ label: 'Name', control: titleIn }));
       addTo(scroll, ui.field({ label: 'Image', control: h('div.gk-stack', [D.image ? WB.ui.thumb(D.image, { cls: 'wb-at-setthumb', fit: 'contain' }) : h('div.gk-small.gk-muted', { text: 'No image: a blank parchment of ' + D.width + ' × ' + D.height + ' px.' }),
@@ -1090,6 +1188,7 @@
 
     /* ---------- overlay drawing (drafts, measure, calibrate) ---------- */
     function drawOverlay(g) {
+      T.overlay(g);
       const pts = S.draft ? S.draft.pts : S.measure ? S.measure.pts : S.cal ? S.cal : null;
       if (!pts || !pts.length) return;
       const live2 = S.hoverMap && (S.draft || (S.measure && !S.measure.done) || (S.cal && S.cal.length === 1)) ? pts.concat([S.hoverMap]) : pts;
@@ -1155,7 +1254,9 @@
       if (e.button === 1 || (e.button === 0 && spaceDown)) { down = { pan: true, sx, sy, moved: false }; capture(canvas, e); return; }
       if (e.button !== 0) return;
       const tool = S.tool;
+      if (T.has(tool)) { T.down(e, sx, sy, mx, my); capture(canvas, e); return; }
       if (tool === 'select') {
+        if (T.selectDown(e, sx, sy, mx, my)) { capture(canvas, e); return; }
         const hit = view.hit(sx, sy, { handles: !ro() });
         down = { sx, sy, mx, my, hit, moved: false, pan: !hit || ro() };
         if (hit && !ro()) {
@@ -1170,26 +1271,27 @@
         if (!S.draft) S.draft = { kind: tool, pts: [] };
         const pts = S.draft.pts;
         if (tool === 'region' && pts.length > 2) { const [fx, fy] = view.toScreen(pts[0][0], pts[0][1]); if (Math.hypot(fx - sx, fy - sy) < 10 * view.ui) { finishDraft(); return; } }
-        pts.push((!e.altKey && snapAt(sx, sy)) || [mx, my]);
+        pts.push((!e.altKey && snapAt(sx, sy)) || T.snap([mx, my]));
         down = { draw: true, sx, sy, last: [sx, sy] };
         capture(canvas, e);
         view.draw();
       } else if (tool === 'measure') {
         if (!S.measure || S.measure.done) S.measure = { pts: [] };
-        S.measure.pts.push((!e.altKey && snapAt(sx, sy, { pins: true })) || [mx, my]);
+        S.measure.pts.push((!e.altKey && snapAt(sx, sy, { pins: true })) || T.snap([mx, my]));
         paintMeasure(); view.draw();
       } else if (tool === 'calibrate') {
         S.cal = S.cal && S.cal.length === 1 ? S.cal.concat([[mx, my]]) : [[mx, my]];
         view.draw();
         if (S.cal.length === 2) { const [a, b] = S.cal; S.cal = null; view.draw(); calibrate(a, b); }
-      } else if (tool === 'pin') addPin(mx, my, sx, sy);
-      else if (tool === 'label') addLabel(mx, my, sx, sy);
+      } else if (tool === 'pin') addPin(...T.snap([mx, my]), sx, sy);
+      else if (tool === 'label') addLabel(...T.snap([mx, my]), sx, sy);
     });
     canvas.addEventListener('pointermove', e => {
       if (S.globe) return;
       const [sx, sy] = ptOf(e), [mx, my] = view.toMap(sx, sy);
       S.hoverMap = [mx, my];
       paintCoords(mx, my);
+      if (T.move(e, sx, sy, mx, my, !!down)) return;
       if (down && down.pan) {
         if (Math.hypot(sx - down.sx, sy - down.sy) > 2) down.moved = true;
         view.pan(sx - down.sx, sy - down.sy); down.sx = sx; down.sy = sy; saveView();
@@ -1212,6 +1314,7 @@
           it.points[idx] = np;
           for (const l of links) l.item.points[l.index] = np.slice();
         }
+        else if ((it.kind === 'pin' || it.kind === 'label') && T.snapOn() && !e.altKey) { const sp = T.snap([down.orig.x + dx, down.orig.y + dy]); it.x = sp[0]; it.y = sp[1]; }
         else { it.x = down.orig.x + dx; it.y = down.orig.y + dy; it.points = down.orig.points.map(p => [p[0] + dx, p[1] + dy]); }
         view.setItems(S.items); view.draw();
         hideTip();
@@ -1227,6 +1330,7 @@
       } else view.draw();
     });
     const endDown = async e => {
+      if (T.up(e)) { down = null; return; }
       const d = down; down = null;
       canvas.classList.remove('panning');
       if (!d) return;
@@ -1234,7 +1338,11 @@
       if (d.pan) {
         if (!d.moved && S.tool === 'select' && e && e.button === 0) {
           if (d.hit && ro()) cardFor(d.hit.item);
-          else if (!d.hit) select(null);
+          else if (!d.hit) {
+            select(null);
+            // the Travel view: a click (not a drag) on open ground moves the starting point
+            if (M.mode === 'travel') { M.setOrigin([d.mx, d.my]); PN.save(); PN.banner(); }
+          }
         }
         return;
       }
@@ -1262,6 +1370,7 @@
     canvas.addEventListener('pointerleave', () => { S.hoverMap = null; hideTip(); paintCoords(null); if (view.opt.hover) { view.opt.hover = null; view.draw(); } });
     canvas.addEventListener('dblclick', e => {
       if (S.globe) return;
+      if (T.dbl()) { e.preventDefault(); return; }
       const [sx, sy] = ptOf(e);
       if (S.draft) { e.preventDefault(); if (S.draft.pts.length > (S.draft.kind === 'region' ? 3 : 2)) S.draft.pts.pop(); finishDraft(); return; }
       if (S.tool === 'measure' && S.measure) { S.measure.done = true; paintMeasure(); view.draw(); return; }
@@ -1284,6 +1393,7 @@
       if (S.globe) return;
       const [sx, sy] = ptOf(e), [mx, my] = view.toMap(sx, sy);
       if (S.draft) { finishDraft(); return; }
+      if (T.finish()) return;
       const hit = view.hit(sx, sy);
       if (hit && hit.item.kind !== 'region') return itemMenu(hit.item, e, [mx, my]);
       // on open ground or inside a territory: the map's own actions, then the territory's
@@ -1383,8 +1493,10 @@
       if (e.ctrlKey && k.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); if (!ro()) undo(); return; }
       if (e.ctrlKey && (k.toLowerCase() === 'y' || (k.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); if (!ro()) redo(); return; }
       if (e.ctrlKey && k.toLowerCase() === 'd' && it && !ro()) { e.preventDefault(); duplicate(it); return; }
+      if (k !== 'Escape' && T.key(e)) return;
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       if (k === 'Escape') {
+        if (T.escape()) return;
         if (S.draft) { S.draft = null; view.draw(); }
         else if (S.measure) { S.measure = null; paintMeasure(); view.draw(); }
         else if (S.cal) { S.cal = null; view.draw(); }
@@ -1430,7 +1542,7 @@
       if (S.globe) S.globe.destroy();
       stageInner.classList.add('globe');
       S.globe = WB.atlasGlobe.create(stageInner, {
-        data: S.data, img: S.img, items: () => S.items, view,
+        data: S.data, img: S.img, base: () => view.baseCanvas, items: () => S.items, view,
         onPick: (it, ev) => { if (ro()) cardFor(it, ev); else select(it.id); },
         onOpen: it => { if (it.subMapId) openMap(it.subMapId); else if (it.entryId) WB.peek(it.entryId); },
         onCoords: t => { coords.textContent = t || ''; },
@@ -1444,6 +1556,7 @@
       const c = document.createElement('canvas');
       const v2 = V().create(c, { day: view.opt.day, allTimes: view.opt.allTimes, filter: view.opt.filter, graticule: view.opt.graticule });
       v2.setMap(S.data, S.img); v2.setItems(S.items);
+      v2.baseCanvas = view.baseCanvas; v2.under = view.under; v2.mid = view.mid; v2.opt.regionFill = view.opt.regionFill; v2.opt.pinDim = view.opt.pinDim;
       let w, hh, scale;
       if (whole) {
         const maxSide = 6000, f = Math.min(1, maxSide / Math.max(S.data.width, S.data.height)) * Math.max(1, Math.min(2, 2400 / Math.max(S.data.width, S.data.height)));
@@ -1471,7 +1584,7 @@
     S.act = { select, openMap, showGallery, setDay, setMode, setTool, historyAt, focusItem, toggleSide, newMap: newMapDialog, refreshAll, paintSide, cardFor };
 
     /* ---------- painting everything ---------- */
-    function paintAll() { paintHead(); paintSide(); paintTools(); paintInspector(); paintLegend(); paintTime(); paintMeasure(); body.classList.toggle('side-closed', !P.sideOpen); }
+    function paintAll() { paintHead(); paintSide(); paintTools(); paintInspector(); paintLegend(); paintTime(); paintMeasure(); PN.banner(); T.paintOptions(optsBar); body.classList.toggle('side-closed', !P.sideOpen); }
     async function refreshAll() {
       await loadMaps();
       if (S.map) {
@@ -1482,7 +1595,7 @@
 
     subs.push(GK.bus.on('layout', () => { if (S.map && !S.gallery) { view.measure(); view.draw(); paintScale(); paintLegend(); } }));
     subs.push(WB.onChange(['map_items'], p => { if (!S.map) return; const mine = (p.ids || []).length && (p.ids || []).every(id => S.savingIds.has(id) || id === S.map.id); if (!mine) reloadItems(); }));
-    subs.push(WB.onChange(['entries', 'media'], async p => { if (!S.map) { await loadMaps(); if (S.gallery) showGallery(); return; } if ((p.ids || []).includes(S.map.id)) { const r = await WB.api('atlas.map', S.map.id).catch(() => null); if (!r || r.entry.deletedAt) return refreshAll(); } await loadMaps(); reloadItems(); paintHead(); }, 200));
+    subs.push(WB.onChange(['entries', 'media'], async p => { if (S.map && Date.now() < (S.quietUntil || 0) && (p.ids || []).length === 1 && p.ids[0] === S.map.id) return; if (!S.map) { await loadMaps(); if (S.gallery) showGallery(); return; } if ((p.ids || []).includes(S.map.id)) { const r = await WB.api('atlas.map', S.map.id).catch(() => null); if (!r || r.entry.deletedAt) return refreshAll(); } await loadMaps(); reloadItems(); paintHead(); }, 200));
     subs.push(WB.on('share', () => { select(null); refreshAll(); }));
     // another world: start over; the same world edited (its date, its settings): just refresh
     const mountedWorld = WB.worldId;

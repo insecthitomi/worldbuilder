@@ -58,6 +58,7 @@
   });
   GK.smoke.check('modules registered', () => GK.modules.list().length >= 15);
   GK.smoke.check('shell rendered', () => !!document.querySelector('.gk-shell .gk-nav-btn'));
+  GK.smoke.check('sidebar has about eight groups, each screen in one', () => { const g = GK.shell.groups(), ids = g.flatMap(x => x.members.map(m => m.id)); return g.filter(x => !x.foot).length <= 9 && g.length >= 6 && ids.length === new Set(ids).size && GK.modules.list().filter(m => m.nav !== false).every(m => ids.includes(m.id)); });
   GK.smoke.check('a world is open', () => !!WB.worldId && WB.types.size > 10);
   GK.smoke.check('solid panel ink contrasts', () => { settings.patch({ matAll: 'solid', solidPanel: '#fafafa', inkMode: 'auto' }); return getComputedStyle(document.documentElement).getPropertyValue('--solid-panel-ink').trim() === '#10161f'; });
   GK.smoke.check('solid surfaces are not refracted', () => { settings.patch({ matAll: 'solid' }); return lensed() === 0; });
@@ -92,6 +93,31 @@
     return aligned;
   });
   GK.smoke.check('alignment at 125% scale: the app fits the window, placed = measured, crisp hairlines', () => { if (!/^ok/.test(aligned)) throw new Error(aligned); return true; });
+  // hubs: a sidebar group opens its last-used screen, its tab strip switches screens, WB.go(member id) still works
+  GK.smoke.step('hubs', async () => {
+    const out = {}, wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const grpBtn = (m) => document.querySelector('.gk-nav-btn[data-members~="' + m + '"]');
+    const tabs = () => [...document.querySelectorAll('.gk-hubbar .gk-tabs > button')];
+    await WB.go('chronicle'); await wait(300);
+    out.crumb = document.querySelector('.gk-titlebar .gk-crumb:last-of-type').textContent;
+    out.tabs = tabs().map(b => b.textContent).join(',');
+    out.on = (tabs().find(b => b.classList.contains('on')) || {}).textContent;
+    await WB.go('home'); await wait(200);
+    grpBtn('codex').click(); await wait(400);
+    out.reopened = GK.shell.current;
+    const web = tabs().find(b => b.textContent === 'Connections'); web && web.click(); await wait(400);
+    out.switched = GK.shell.current;
+    await WB.go('home'); await wait(200);
+    grpBtn('codex').click(); await wait(400);
+    out.remembered = GK.shell.current;
+    await WB.go('world', { tab: 'calendar' }); await wait(500);
+    out.worldLeaf = !!document.querySelector('.wd-prev-big');
+    out.settingsTabs = tabs().map(b => b.textContent).join(',');
+    await WB.go('home'); await wait(200);
+    out.noStrip = tabs().length === 0;
+    const ok = out.crumb === 'World / Timeline' && out.tabs.startsWith('Codex,Connections,Timeline') && out.on === 'Timeline' && out.reopened === 'chronicle' && out.switched === 'web' && out.remembered === 'web' && out.worldLeaf && /World settings,Look,Guide/.test(out.settingsTabs) && out.noStrip;
+    return ok ? 'ok: ' + JSON.stringify(out) : 'error: ' + JSON.stringify(out);
+  });
   // each screen's own steps and checks (queued with WB.smoke / WB.check), after the example world exists
   for (const [kind, name, fn] of WB.smokeQueue) { if (kind === 'step') GK.smoke.step(name, async () => { settings.reset(); return fn(); }); else GK.smoke.check(name, fn); }
   GK.smoke.ready = true;   // the smoke harness waits for this before reading the steps

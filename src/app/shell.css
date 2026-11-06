@@ -62,3 +62,11 @@ html.win-inactive #gk-frame { opacity: .6; }
 
 /* button outlines (Appearance → Text & outline): a thin line around every control, from the outline tokens */
 html.btnoutline #app :is(.gk-btn, .gk-chip, .gk-seg, .gk-switch, .gk-input, .gk-wc) { outline: var(--btn-ow, 1.5px) solid var(--btn-oc, var(--line2)); outline-offset: -1px; }
+
+/* hubs: the page area is a column, with the group's tab strip above the scrolling view */
+.gk-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.gk-main > .gk-view { flex: 1 1 auto; min-height: 0; }
+.gk-hubbar { flex: none; padding: 2px var(--gap) calc(var(--gap) * .5); }
+.gk-hubbar[hidden] { display: none; }
+.gk-hubbar .gk-tabs { overflow-x: auto; scrollbar-width: none; }
+.gk-hubbar .gk-tabs > button { white-space: nowrap; }

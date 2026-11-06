@@ -212,7 +212,7 @@
       { label: 'Add a tag…', icon: '#', onClick: async () => { const n = await ui.prompt('Add a tag', '', 'e.g. act two, unresolved'); if (n) await WB.api('entries.addTag', e.id, n); } },
       { label: 'New child entry', icon: '＋', onClick: () => WB.ui.createDialog({ parentId: e.id, type: (t && t.childTypes && t.childTypes[0]) || (t && t.key) }) },
       '-',
-      { label: 'Move into…', icon: '⇲', onClick: async () => { const p = await U.pickEntry({ title: 'Move “' + e.title + '” into…', exclude: [e.id], allowNone: 'Top level' }); if (p !== undefined) await WB.api('entries.move', e.id, { parentId: p ? p.id : null }); } },
+      { label: 'Move to…', icon: '⇲', onClick: () => WB.tree.moveDialog([e.id]) },
       { label: 'Duplicate', icon: '⧉', onClick: async () => { const c = await WB.api('entries.duplicate', e.id, { children: true }); WB.open(c.id); } },
       { label: 'Change type', icon: '⇄', sub: typesFor.map(x => ({ label: x.name, icon: x.icon, onClick: () => WB.api('entries.update', e.id, { typeId: x.id }) })) },
       { label: 'Merge into…', icon: '⤞', onClick: () => U.mergeDialog(e) },
@@ -229,6 +229,7 @@
     return to ? WB.go(to, { entryId: e.id }) : WB.open(e.id);
   };
   U.confirmTrash = async e => {
+    if (WB.tree && e.childCount !== 0) { const r = await WB.tree.deleteDialog(e); if (r !== undefined) return r; }
     if (GK.settings.get('wbConfirmDelete') && !(await ui.confirm('Move to trash?', '“' + e.title + '” and anything inside it move to the trash. You can restore them later.', 'Move to trash', true))) return;
     return WB.trash(e);
   };
@@ -326,6 +327,7 @@
       }
       case 'list': return listEditor(value || [], set);
       case 'stats': return statsEditor(value || [], set);
+      case 'axis': case 'attrs': return WB.traitsField ? WB.traitsField(def, value, set) : h('span.gk-faint', { text: '—' });
       case 'image': return imageField(value, set);
       case 'ref': return refEditor(def, value ? [value] : [], v => set(v[0] || ''), true);
       case 'refs': return refEditor(def, value || [], set, false);
@@ -410,6 +412,7 @@
       case 'refs': return h('div.wb-chips', v.map(id => U.chip(id, { size: 'sm' })));
       case 'multi': case 'list': return h('div.wb-chips', v.map(x => h('span.wb-tagchip', { text: x })));
       case 'stats': return h('div.wb-statgrid', v.map(s => h('div.wb-statcell', [h('div.gk-tiny.gk-muted', { text: s.label }), h('b', { text: s.value })])));
+      case 'axis': case 'attrs': return WB.traitsView ? WB.traitsView(def, v) : h('span', { text: F.asText(def, v) });
       case 'bool': return h('span', { text: v ? 'Yes' : 'No' });
       case 'rating': return h('span.wb-stars.view', { text: '★'.repeat(v) + '☆'.repeat(5 - v) });
       case 'progress': return h('div.gk-row.nowrap', [h('div.gk-grow', [ui.meter(v / 100)]), h('span.gk-small', { text: v + '%' })]);

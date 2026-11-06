@@ -206,7 +206,7 @@
           ]);
         });
         box.appendChild(ui.panel({ title: 'Eras of the ' + (c.name || 'calendar'), icon: '◫', actions: [ui.button({ label: 'Edit the calendar', small: true, icon: '✎', onClick: () => WB.go('world', { tab: 'calendar' }) })],
-          body: [cards.length ? h('div.ch-era-cards', cards) : h('p.gk-muted', { text: 'This calendar has no eras: years are plain numbers. Add eras in World → Calendar (for example "Before the Flood" and "Age of Tides").' })] }));
+          body: [cards.length ? h('div.ch-era-cards', cards) : h('p.gk-muted', { text: 'This calendar has no eras: years are plain numbers. Add eras in World settings → World → Calendar (for example "Before the Flood" and "Age of Tides").' })] }));
         // named periods
         const periods = data.list.filter(e => {
           if (!WB.visible(e) || !e.start || !e.end) return false;

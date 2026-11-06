@@ -1,6 +1,6 @@
 {
   "name": "worldbuilder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Offline worldbuilding studio: an interlinked codex, maps, timelines on your own calendars, manuscripts, languages and campaign tools.",
   "main": "main.js",
   "productName": "Worldbuilder",

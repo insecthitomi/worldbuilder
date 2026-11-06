@@ -242,3 +242,50 @@ html:has(.wb-atlas-page) body .wb-pop { background-color: color-mix(in srgb, var
 .wb-at-mini-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
 .wb-at-mini-cap { position: absolute; left: .45em; bottom: .45em; display: inline-flex; max-width: calc(100% - .9em); gap: .1em; align-items: center; border: 0; border-radius: 99px; padding: .2em .65em; font: inherit; font-size: .85em; font-weight: 600; cursor: pointer;
   color: var(--solid-panel-ink); background: color-mix(in srgb, var(--solid-panel) 86%, transparent); box-shadow: 0 4px 12px -6px color-mix(in srgb, #000 70%, transparent); }
+
+/* ---------- toolbox rail: two columns, groups separated ---------- */
+.wb-at-tools { display: grid; grid-template-columns: repeat(2, 2.3em); max-height: calc(100% - 1.4em); overflow-y: auto; scrollbar-width: thin; }
+.wb-at-tools > .wb-at-toolsep { grid-column: 1 / -1; }
+.wb-at-tool[disabled] { opacity: .4; cursor: default; }
+.wb-at-canvas[data-tool] { cursor: default; }
+.wb-at-canvas:is([data-tool="stamp"], [data-tool="raise"], [data-tool="lower"], [data-tool="smooth"], [data-tool="water"], [data-tool="land"], [data-tool="coast"], [data-tool="biome"], [data-tool="fill"], [data-tool="regionbrush"], [data-tool="river"], [data-tool="road"], [data-tool="deposit"], [data-tool="eraser"]) { cursor: crosshair; }
+
+/* ---------- the stack at the top of the stage: banner, tool options, hint ---------- */
+.wb-at-top { position: absolute; z-index: 3; top: .7em; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: .4em; width: max-content; max-width: min(46em, calc(100% - 15em)); pointer-events: none; }
+.wb-at-top > .wb-at-float { position: static; transform: none; pointer-events: auto; max-width: 100%; }
+.wb-at-top > .wb-at-hint { pointer-events: none; }
+.wb-at-opts { display: flex; flex-direction: column; gap: .4em; padding: .5em .7em; font-size: .9em; }
+.wb-at-opts .gk-row { gap: .4em; }
+.wb-at-optrow { display: flex; flex-wrap: wrap; gap: .3em 1em; align-items: center; }
+.wb-at-optrow > * { min-width: 11em; flex: 1 1 11em; }
+.wb-at-banner { display: flex; flex-wrap: wrap; align-items: center; gap: .5em .8em; padding: .5em .8em; font-size: .9em; }
+.wb-at-banner.wb-at-empty-eco { max-width: 32em; }
+.wb-at-viewbtn { min-width: 8em; justify-content: flex-start; }
+
+/* ---------- biome and resource pickers ---------- */
+.wb-at-biomes { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.2em, 1fr)); gap: .25em; }
+.wb-at-biome, .wb-at-resbtn { display: flex; align-items: center; gap: .4em; border: 0; border-radius: calc(var(--radius) * .45); padding: .25em .5em; background: color-mix(in srgb, var(--solid-panel-ink) 8%, transparent); color: inherit; font: inherit; font-size: .85em; cursor: pointer; text-align: left; }
+.wb-at-biome:hover, .wb-at-resbtn:hover { background: color-mix(in srgb, var(--solid-panel-ink) 16%, transparent); }
+.wb-at-biome.on, .wb-at-resbtn.on { background: var(--accent); color: var(--accent-ink); }
+.wb-at-biome-sw, .wb-at-ressw { width: 1em; height: 1em; flex: none; border-radius: .3em; background: var(--c); box-shadow: inset 0 0 0 var(--hair) color-mix(in srgb, #000 40%, transparent); }
+.wb-at-ressw { border-radius: 50%; }
+.wb-at-biome-nm { min-width: 0; overflow: clip; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- the Map panel: View / Layers / Settings ---------- */
+.wb-at-sec { display: flex; flex-direction: column; border-radius: calc(var(--radius) * .6); background: color-mix(in srgb, var(--text) 4%, transparent); }
+.wb-at-sechead { display: flex; align-items: baseline; gap: .5em; width: 100%; border: 0; background: transparent; color: inherit; font: inherit; padding: .5em .7em; cursor: pointer; border-radius: inherit; text-align: left; }
+.wb-at-sechead:hover { background: var(--hover); }
+.wb-at-secbody { padding: .2em .7em .8em; display: flex; flex-direction: column; gap: .5em; }
+.wb-at-modes { display: flex; flex-direction: column; gap: 1px; }
+.wb-at-mode { display: flex; align-items: center; gap: .65em; border: 0; background: transparent; color: inherit; font: inherit; padding: .4em .5em; border-radius: calc(var(--radius) * .5); cursor: pointer; text-align: left; }
+.wb-at-mode:hover { background: var(--hover); }
+.wb-at-mode.on { background: var(--sel); }
+.wb-at-mode-ic { display: grid; place-items: center; width: 1.9em; height: 1.9em; flex: none; border-radius: 50%; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.wb-at-mode-tx { display: flex; flex-direction: column; min-width: 0; }
+.wb-at-terraininfo { display: flex; flex-direction: column; gap: .3em; padding: .5em .6em; border-radius: calc(var(--radius) * .5); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.wb-at-reslist { display: flex; flex-wrap: wrap; gap: .3em .6em; font-size: .85em; }
+.wb-at-rescount { display: inline-flex; align-items: center; gap: .3em; }
+.wb-at-rescount > i { width: .8em; height: .8em; border-radius: 50%; background: var(--c); }
+.wb-at-banner > * { flex: 0 0 auto; }
+.wb-at-banner > span, .wb-at-banner > div { flex: 1 1 14em; }
+.wb-at-banner .gk-control, .wb-at-banner select { width: auto; min-width: 9em; }

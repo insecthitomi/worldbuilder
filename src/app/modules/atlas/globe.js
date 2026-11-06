@@ -29,6 +29,7 @@
       const v = V.create(c, { day: o.view.opt.day, allTimes: o.view.opt.allTimes, filter: o.view.opt.filter, labels: false, regionLabels: false, graticule: false });
       v.size(TW, TH, 1, Math.max(1, TW / 1800));
       v.setMap(D, o.img);
+      v.baseCanvas = o.base ? o.base() : null; v.under = o.view.under; v.opt.regionFill = o.view.opt.regionFill;
       v.setItems(o.items().filter(i => i.kind === 'region' || i.kind === 'path'));
       v.t = { k: TW / D.width, x: 0, y: 0 };
       v.render();

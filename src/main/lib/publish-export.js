@@ -74,6 +74,7 @@ function markdownVault(m, x = {}) {
         case 'refs': fm[d.key] = v.filter(id => m.titleOf(id)).map(id => wiki(id)); break;
         case 'multi': case 'list': fm[d.key] = v.map(String); break;
         case 'stats': fm[d.key] = v.map(s => s.label + ': ' + s.value); break;
+        case 'axis': case 'attrs': fm[d.key] = F.asText(d, v); break;
         case 'image': { const n = mediaFile(v); if (n) fm[d.key] = '[[' + n + ']]'; break; }
         case 'number': case 'rating': case 'progress': fm[d.key] = Number(v); break;
         case 'bool': fm[d.key] = !!v; break;
@@ -125,6 +126,7 @@ function fieldText(m, d, v) {
     case 'refs': return v.map(m.titleOf).filter(Boolean).join('; ');
     case 'multi': case 'list': return v.join('; ');
     case 'stats': return v.map(s => s.label + ': ' + s.value).join('; ');
+    case 'axis': case 'attrs': return F.asText(d, v);
     case 'bool': return v ? 'yes' : 'no';
     default: return String(v);
   }

@@ -158,7 +158,7 @@
             list.appendChild(btn);
           }
         }
-        if (!list.children.length) list.appendChild(h('div.gk-small.gk-muted.web-pad', { text: 'No relation called “' + q + '”. Add new kinds in World → Relation types.' }));
+        if (!list.children.length) list.appendChild(h('div.gk-small.gk-muted.web-pad', { text: 'No relation called “' + q + '”. Add new kinds in World settings → Structure → Relations.' }));
       };
       const sentence = () => {
         const tA = a ? WB.titleOf(a) : 'the first entry', tB = b ? WB.titleOf(b) : 'the second entry';

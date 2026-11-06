@@ -13,7 +13,7 @@
   /* ---------------- the count on the navigation button ---------------- */
   const badge = { n: 0, hot: false };
   const paintBadge = () => {
-    const b = [...document.querySelectorAll('.gk-nav-btn')].find(x => x.title === 'Inbox');
+    const b = document.querySelector('.gk-nav-btn[data-members~="inbox"]');
     if (!b) return;
     if (badge.n) { b.dataset.wbBadge = badge.n > 99 ? '99+' : String(badge.n); b.classList.toggle('wb-badge-hot', badge.hot); }
     else { delete b.dataset.wbBadge; b.classList.remove('wb-badge-hot'); }
@@ -640,7 +640,7 @@
         const g = S.gaps;
         const bodyEls = [];
         if (!g) bodyEls.push(h('div.gk-small.gk-muted', { text: 'Looking for gaps…' }));
-        else if (!g.types.length) bodyEls.push(WB.ui.empty({ icon: '◌', title: 'No required fields', text: 'Mark fields as required in World → Types and empty ones show up here as ready-made tasks.', actions: [ui.button({ label: 'Edit types', small: true, onClick: () => WB.go('world', { tab: 'types' }) })] }));
+        else if (!g.types.length) bodyEls.push(WB.ui.empty({ icon: '◌', title: 'No required fields', text: 'Mark fields as required in World settings → Structure → Types & fields and empty ones show up here as ready-made tasks.', actions: [ui.button({ label: 'Edit types', small: true, onClick: () => WB.go('world', { tab: 'types' }) })] }));
         else if (!g.gaps.length) bodyEls.push(h('div.ib-gaps-done', [h('span', { text: '✓' }), h('div', [h('b', { text: 'No gaps' }), h('div.gk-small.gk-muted', { text: (pl => pl.length > 1 ? pl.slice(0, -1).join(', ') + ' and ' + pl[pl.length - 1] : pl[0])(g.types.map(t => t.plural)) + ' have their required fields filled in.' })])]));
         else {
           const byType = new Map();

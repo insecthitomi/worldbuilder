@@ -25,6 +25,8 @@
     list: { label: 'List', icon: '≡' },
     dice: { label: 'Dice roll', icon: '⚄' },
     realdate: { label: 'Real-world date', icon: '▦' },
+    axis: { label: 'Classification (race, class…)', icon: '◆' },
+    attrs: { label: 'Attributes (stat block)', icon: '⬡' },
   };
 
   const f = (key, label, kind, extra) => Object.assign({ key, label, kind }, extra || {});
@@ -47,6 +49,8 @@
       f('fears', 'Fears', 'longtext', { group: 'Drives' }),
       f('flaw', 'Flaw', 'text', { group: 'Drives' }),
       f('secret', 'Secret', 'longtext', { group: 'Drives', secret: true }),
+      f('classes', 'Classification', 'axis', { group: 'Identity', wide: true, hint: 'Race, class, caste… set up in World settings → People & attributes.' }),
+      f('attributes', 'Attributes', 'attrs', { group: 'Game', wide: true }),
       f('stats', 'Stats', 'stats', { group: 'Game', hint: 'Keys hp, ac and init feed the initiative tracker.' }),
     ]],
     ['place', 'Place', 'Places', '⌂', '#5fb38a', { dated: { start: 'Founded', end: 'Fell' }, hierarchical: true, childTypes: ['place'], pinnable: true, namegen: true }, [
@@ -79,6 +83,8 @@
       f('diet', 'Diet', 'text'),
       f('traits', 'Traits', 'list'),
       f('danger', 'Danger', 'rating'),
+      f('classes', 'Classification', 'axis', { group: 'Identity', wide: true }),
+      f('attributes', 'Attributes', 'attrs', { group: 'Game', wide: true }),
       f('stats', 'Stat block', 'stats', { group: 'Game' }),
     ]],
     ['item', 'Item', 'Items', '⚱', '#d2a35a', { dated: { start: 'Made', end: 'Lost' }, pinnable: true }, [
@@ -307,6 +313,7 @@
   function empty(kind) {
     switch (kind) {
       case 'refs': case 'multi': case 'list': case 'stats': return [];
+      case 'axis': case 'attrs': return {};
       case 'bool': return false;
       case 'number': case 'rating': case 'progress': return null;
       default: return '';
@@ -317,6 +324,8 @@
     if (v == null) return false;
     if (Array.isArray(v)) return v.length > 0;
     if (kind === 'bool') return v === true;
+    if (kind === 'axis') return typeof v === 'object' && Object.keys(v).some(k => [].concat(v[k]).some(Boolean));
+    if (kind === 'attrs') return typeof v === 'object' && Object.keys(v).some(k => v[k] && typeof v[k] === 'object' && Object.keys(v[k]).length > 0);
     return String(v).trim() !== '';
   }
   /** text of a field for search and exports (refs as ids) */
@@ -327,6 +336,8 @@
       case 'refs': return titleOf ? v.map(titleOf).filter(Boolean).join(', ') : '';
       case 'multi': case 'list': return v.join(', ');
       case 'stats': return v.map(s => s.label + ' ' + s.value).join(', ');
+      case 'axis': return Object.keys(v).map(k => [].concat(v[k]).filter(Boolean).join(', ').replace(/_/g, ' ')).filter(Boolean).join('; ');
+      case 'attrs': return Object.keys(v).map(k => Object.keys(v[k] || {}).map(a => a + ' ' + v[k][a]).join(', ')).filter(Boolean).join('; ');
       case 'bool': return v ? 'Yes' : 'No';
       case 'rating': return '★'.repeat(+v || 0);
       case 'progress': return v + '%';
@@ -335,5 +346,21 @@
   }
   const slug = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'field';
 
-  return { KINDS, builtinTypes, builtinRels, CATEGORIES, STARTERS, PRESETS, empty, filled, asText, slug };
+  /** may an entry of type `child` sit inside one of type `parent`? World setting allowAnyNesting (default on) allows everything;
+      off, a type nests in itself when `hierarchical`, and holds other types listed in its `childTypes` (keys) */
+  function canNest(settings, parent, child) {
+    if (!parent || !child) return true;
+    if (!settings || settings.allowAnyNesting !== false) return true;
+    const kids = parent.childTypes || [];
+    if (parent.id === child.id || parent.key === child.key) return !!parent.hierarchical || kids.includes(child.key);
+    return kids.includes(child.key);
+  }
+  /** type keys offered as "Add inside": the type's childTypes, else itself when it nests, else nothing special */
+  function childChoices(parent) {
+    const out = (parent.childTypes || []).slice();
+    if (parent.hierarchical && !out.includes(parent.key)) out.push(parent.key);
+    return out;
+  }
+
+  return { canNest, childChoices, KINDS, builtinTypes, builtinRels, CATEGORIES, STARTERS, PRESETS, empty, filled, asText, slug };
 });

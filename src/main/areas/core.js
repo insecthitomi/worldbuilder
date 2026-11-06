@@ -65,7 +65,7 @@ function worldRow(r) {
   return {
     id: r.id, name: r.name, summary: r.summary || '', icon: r.icon || '', color: r.color || '', coverId: r.cover_id || null,
     calendar, now: dateOf(r.now_day == null ? 0 : r.now_day, r.now_min, r.now_min != null ? 'time' : 'day'),
-    settings: Object.assign({ defaultAudience: 'shared', currency: 'USD', mapUnit: 'miles', wordGoal: 500 }, J(r.settings, {})),
+    settings: Object.assign({ defaultAudience: 'shared', currency: 'USD', mapUnit: 'miles', wordGoal: 500, allowAnyNesting: true }, J(r.settings, {})),
     starter: r.starter || 'blank', archived: !!r.archived, sort: r.sort || 0, createdAt: r.created_at, updatedAt: r.updated_at, openedAt: r.opened_at,
   };
 }
@@ -191,6 +191,17 @@ function handlers(ctx) {
       if (p === id) throw new Error('An entry can\'t sit inside itself.');
       const r = db.get('SELECT parent_id FROM entries WHERE id = ?', p);
       p = r && r.parent_id;
+    }
+  }
+  /** a parent must exist, be alive, live in the same world, not be below the entry, and (strict) suit the type rules */
+  function assertParent(child, parentId, strict) {
+    const p = rawEntry(parentId);
+    if (!p || p.deleted_at) throw new Error('The new parent no longer exists.');
+    if (p.world_id !== child.world_id) throw new Error('The new parent belongs to another world.');
+    assertNoCycle(child.id, parentId);
+    if (strict) {
+      const w = world(child.world_id), pt = typeById(p.type_id), ct = typeById(child.type_id);
+      if (!F.canNest(w.settings, pt, ct)) { const e = new Error(`${ct.plural} don't nest inside ${pt.plural} by the type rules.`); e.code = 'TYPE_RULE'; throw e; }
     }
   }
   function logWords(worldId, entryId, delta) {
@@ -359,7 +370,7 @@ function handlers(ctx) {
     const w = world(worldId);
     const t = d.typeId ? typeById(d.typeId) : typeByKey(worldId, d.typeKey || d.type || 'note');
     if (!t || t.worldId !== worldId) throw new Error('Pick a type for the new entry.');
-    if (d.parentId && !db.get('SELECT 1 FROM entries WHERE id = ? AND world_id = ?', d.parentId, worldId)) throw new Error('The parent entry no longer exists.');
+    if (d.parentId && !db.get('SELECT 1 FROM entries WHERE id = ? AND world_id = ? AND deleted_at IS NULL', d.parentId, worldId)) throw new Error('The parent entry no longer exists.');
     const id = d.id && T.ID.test(d.id) && !rawEntry(d.id) ? d.id : uid();
     const body = T.sanitize(d.body || ''), text = T.text(body), wc = T.words(text);
     const fields = Object.assign({}, d.fields || {});
@@ -421,7 +432,7 @@ function handlers(ctx) {
       put('type_id', t.id); fieldsChanged = true;
     }
     if (p.parentId !== undefined && (p.parentId || null) !== old.parent_id) {
-      if (p.parentId) { assertNoCycle(id, p.parentId); if (!rawEntry(p.parentId)) throw new Error('The new parent no longer exists.'); }
+      if (p.parentId) assertParent(old, p.parentId);
       put('parent_id', p.parentId || null);
       if (p.position == null) put('position', nextPosition(old.world_id, p.parentId || null));
     }
@@ -474,23 +485,111 @@ function handlers(ctx) {
     ctx.changed(['entries', 'links'], ids);
     return { ids };
   }
-  function moveEntry(id, { parentId, index, beforeId, afterId } = {}) {
+  function moveEntry(id, { parentId, index, beforeId, afterId, strict } = {}) {
     const r = rawEntry(id);
     if (!r) throw new Error('That entry no longer exists.');
+    if (r.deleted_at) throw new Error('That entry is in the trash. Restore it first.');
     const parent = parentId === undefined ? r.parent_id : parentId || null;
-    if (parent) assertNoCycle(id, parent);
+    if (parent) assertParent(r, parent, strict);
     const sibs = db.all(`SELECT id, position FROM entries WHERE world_id = ? AND ${parent ? 'parent_id = ?' : 'parent_id IS NULL'} AND deleted_at IS NULL AND id != ? ORDER BY position, title`,
       ...[r.world_id].concat(parent ? [parent] : []), id);
     let at = index != null ? index : beforeId ? sibs.findIndex(s => s.id === beforeId) : afterId ? sibs.findIndex(s => s.id === afterId) + 1 : sibs.length;
     if (at < 0) at = sibs.length;
     at = Math.max(0, Math.min(sibs.length, at));
-    const order = sibs.map(s => s.id); order.splice(at, 0, id);
+    // fractional position: only this entry is written, unless the neighbours leave no gap (then the siblings are renumbered)
+    const prev = sibs[at - 1], next = sibs[at];
+    let pos, renumber = false;
+    if (prev && next) { if (next.position - prev.position > 1e-6) pos = (prev.position + next.position) / 2; else renumber = true; }
+    else if (prev) pos = prev.position + 1;
+    else if (next) pos = next.position - 1;
+    else pos = 1;
     db.tx(() => {
       db.run('UPDATE entries SET parent_id = ?, updated_at = ? WHERE id = ?', parent, now(), id);
-      order.forEach((x, i) => db.run('UPDATE entries SET position = ? WHERE id = ?', i + 1, x));
+      if (renumber) { const order = sibs.map(s => s.id); order.splice(at, 0, id); order.forEach((x, i) => db.run('UPDATE entries SET position = ? WHERE id = ?', i + 1, x)); }
+      else db.run('UPDATE entries SET position = ? WHERE id = ?', pos, id);
     });
     ctx.changed(['entries'], [id]);
     return full(id);
+  }
+  /** moves several entries at once, in the order given. Entries whose ancestor is also moving ride along with it.
+      Everything is checked first, so a refused move changes nothing. */
+  function moveMany(ids, o = {}) {
+    const want = [...new Set(ids || [])];
+    for (const id of want) if (!rawEntry(id)) throw new Error('One of those entries no longer exists.');
+    const set = new Set(want);
+    const top = want.filter(id => { let p = rawEntry(id).parent_id, g = 0; while (p && g++ < 10000) { if (set.has(p)) return false; const x = rawEntry(p); p = x && x.parent_id; } return true; });
+    const parent = o.parentId === undefined ? undefined : o.parentId || null;
+    if (parent) for (const id of top) assertParent(rawEntry(id), parent, o.strict);
+    db.tx(() => {
+      let prev = null;
+      top.forEach((id, i) => {
+        const opt = { parentId: parent, strict: o.strict };
+        if (i === 0) { if (o.beforeId) opt.beforeId = o.beforeId; else if (o.afterId) opt.afterId = o.afterId; else if (o.index != null) opt.index = o.index; }
+        else opt.afterId = prev;
+        moveEntry(id, opt); prev = id;
+      });
+    });
+    return { n: top.length, ids: top };
+  }
+  function siblingsOf(r) {
+    return db.all(`SELECT id FROM entries WHERE world_id = ? AND ${r.parent_id ? 'parent_id = ?' : 'parent_id IS NULL'} AND deleted_at IS NULL ORDER BY position, title`,
+      ...[r.world_id].concat(r.parent_id ? [r.parent_id] : [])).map(x => x.id);
+  }
+  /** Tab: becomes the last child of the sibling just above */
+  function indentEntry(id) {
+    const r = rawEntry(id);
+    if (!r) throw new Error('That entry no longer exists.');
+    const sibs = siblingsOf(r), i = sibs.indexOf(id);
+    if (i < 1) throw new Error('There is nothing above it to nest it under.');
+    return moveEntry(id, { parentId: sibs[i - 1] });
+  }
+  /** Shift+Tab: becomes a sibling right after its parent */
+  function outdentEntry(id) {
+    const r = rawEntry(id);
+    if (!r) throw new Error('That entry no longer exists.');
+    if (!r.parent_id) throw new Error('It is already at the top level.');
+    const p = rawEntry(r.parent_id);
+    return moveEntry(id, { parentId: p.parent_id || null, afterId: p.id });
+  }
+  /** Alt+Up / Alt+Down: swaps places with the neighbouring sibling (dir -1 or 1) */
+  function shiftEntry(id, dir) {
+    const r = rawEntry(id);
+    if (!r) throw new Error('That entry no longer exists.');
+    const sibs = siblingsOf(r), i = sibs.indexOf(id), to = i + (dir < 0 ? -1 : 1);
+    if (to < 0 || to >= sibs.length) return full(id);
+    return moveEntry(id, { index: to });
+  }
+  /** { entryId: number of entries nested anywhere below it } for every entry that has any */
+  function descendantCounts(worldId) {
+    const kids = new Map();
+    for (const r of db.all('SELECT id, parent_id FROM entries WHERE world_id = ? AND deleted_at IS NULL AND parent_id IS NOT NULL', worldId)) {
+      if (!kids.has(r.parent_id)) kids.set(r.parent_id, []);
+      kids.get(r.parent_id).push(r.id);
+    }
+    const out = {}, seen = new Set();
+    const count = id => {
+      if (id in out) return out[id];
+      if (seen.has(id)) return 0;
+      seen.add(id);
+      let n = 0;
+      for (const c of kids.get(id) || []) n += 1 + count(c);
+      return (out[id] = n);
+    };
+    for (const id of kids.keys()) count(id);
+    for (const k of Object.keys(out)) if (!out[k]) delete out[k];
+    return out;
+  }
+  /** deleting a parent but keeping what is inside it: the children take its place, then it goes to the trash */
+  function removeKeepChildren(id) {
+    const r = rawEntry(id);
+    if (!r) throw new Error('That entry no longer exists.');
+    const kids = db.all('SELECT id FROM entries WHERE parent_id = ? AND deleted_at IS NULL ORDER BY position, title', id).map(x => x.id);
+    let promoted = [];
+    db.tx(() => {
+      if (kids.length) promoted = moveMany(kids, { parentId: r.parent_id || null, afterId: id }).ids;
+      trash(id);
+    });
+    return { promoted, trashed: id };
   }
   /** o.owned = false skips copying other areas' owned rows (for an area that copies its own, like boards.duplicate) */
   function duplicate(id, { children = false, parentId, owned = true } = {}) {
@@ -943,6 +1042,12 @@ function handlers(ctx) {
     'entries.purge': id => purge(id),
     'entries.emptyTrash': worldId => { const ids = db.all('SELECT id FROM entries WHERE world_id = ? AND deleted_at IS NOT NULL AND trash_root = id', worldId).map(r => r.id); for (const i of ids) purge(i); return { n: ids.length }; },
     'entries.move': (id, o) => moveEntry(id, o),
+    'entries.moveMany': (ids, o) => moveMany(ids, o),
+    'entries.indent': id => indentEntry(id),
+    'entries.outdent': id => outdentEntry(id),
+    'entries.shift': (id, dir) => shiftEntry(id, dir),
+    'entries.descendantCounts': worldId => descendantCounts(worldId),
+    'entries.removeKeepChildren': id => removeKeepChildren(id),
     'entries.reorder': (ids) => { db.tx(() => ids.forEach((id, i) => db.run('UPDATE entries SET position = ? WHERE id = ?', i + 1, id))); ctx.changed(['entries'], ids); return true; },
     'entries.duplicate': (id, o) => duplicate(id, o),
     'entries.merge': (into, from) => merge(into, from),

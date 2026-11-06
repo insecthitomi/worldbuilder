@@ -151,7 +151,7 @@
     if (WB.share) { ui.toast('Leave Share view to add relatives', '◑'); return Promise.resolve(null); }
     const C = P.common, p = F.people.get(person) || WB.liteOf(person) || { id: person, title: WB.titleOf(person) };
     const rels = { parent: C.familyRel('parent'), spouse: C.familyRel('spouse'), sibling: C.familyRel('sibling') };
-    if (!rels.parent || !rels.spouse) { ui.toast('This world has no parent / spouse relation types. Add them in World → Relation types.', '⚠', 5200); return Promise.resolve(null); }
+    if (!rels.parent || !rels.spouse) { ui.toast('This world has no parent / spouse relation types. Add them in World settings → Structure → Relations.', '⚠', 5200); return Promise.resolve(null); }
     return new Promise(resolve => {
       let mode = 'new', existing = null, given = '', start = null, end = null, married = null, done = false;
       const fam = C.surname(p.title);

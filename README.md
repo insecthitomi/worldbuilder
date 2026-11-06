@@ -12,36 +12,58 @@ who just like inventing places. Everything in a world is an **entry** (a charact
 piece of lore, culture, language, story, chapter, scene, plot thread, map, board, random table, encounter, session, note,
 post or product — or a type you design yourself), and every screen is a different way of looking at your entries.
 
-- **Home** — your world at a glance: its own date, season and moon phases, writing progress and streak, where you left
+The sidebar has eight groups; the screens of a group are tabs at the top of its pages: **Home**, **World** (Codex, Connections, Timeline, Checks), **Maps & Sim** (Atlas, Simulate), **Create** (Write, Boards, Lexicon), **Play** (Toolkit), **Collect** (Inbox, Library), **Share** (Publish, Business) and **Settings** at the bottom (World settings, Look, Guide). Ctrl+1…8 opens a group, and it reopens the screen you used last in it.
+
+- **Home** (Home) — your world at a glance: its own date, season and moon phases, writing progress and streak, where you left
   off, tasks, the inbox, world health, anniversaries on this day, and questions about gaps in your world.
-- **Codex** — every entry in a tree or list, filtered by type, tag or saved collection. Each entry has fields from its
+- **Codex** (World) — every entry as a tree, list, cards or an editable table (sortable,
+  grouped, your columns), filtered by type, tag or saved collection. Anything can nest in anything: drag to reparent or reorder,
+  Tab / Shift+Tab to indent, Alt+Up/Down to reorder, "Move to…", select several to move, tag, retype or delete them, a clickable
+  path with a sibling picker, a Contents card with quick add and counts; deleting a parent asks whether its contents go too. Each entry has fields from its
   type's template, rich text, relations (family, allies, rulers, homes…) with dates, everything that links to it, the
   maps and boards it appears on, its history, tasks and earlier versions. Rename freely: links never break.
-- **Write** — manuscripts of stories, chapters and scenes (prose or screenplay), with your world one click away: an
+- **Write** (Create) — manuscripts of stories, chapters and scenes (prose or screenplay), with your world one click away: an
   outline, a corkboard and a story grid of who appears where, focus mode with sprints and typewriter scrolling, word
   goals and streaks, and compile to PDF, Word (RTF), HTML, Markdown, plain text or Fountain.
-- **Atlas** — maps from your own images or generated terrain (continents, islands, whole planets), planets on a
-  spinning globe with areas and distances measured on the sphere, country borders that change through history with a
-  time slider, maps inside maps, routes with travel times, pins linked to entries, and towns founded with one click.
-- **Chronicle** — a timeline from millennia to hours on your world's own calendar, a month calendar with moons and
+- **Atlas** (Maps & Sim) — maps from your own images, a blank sheet or seeded terrain (planets, continents, two lands,
+  islands, inland seas, highlands: tectonic ridges, erosion, climate bands, Whittaker biomes, rivers that run downhill,
+  lakes, resource deposits, optional settlement sites and roads). The View menu switches between Political, Terrain,
+  Relief, Climate (temperature or rainfall), Travel (isochrone rings by walking, horse, cart or ship from any point),
+  Resources, Economy (the simulation's population, wealth, shortages and trade flows) and the Parchment and Plain styles,
+  remembered per map. A toolbox edits generated and blank maps: raise, lower and smooth ground, add or drain water,
+  smooth coastlines, paint or fill biomes, paint regions with a brush, rivers that follow the drainage, roads that
+  follow the cheapest ground, deposits, symbol stamps, curved and path labels, an eraser, grid or hex snapping and
+  multi-select with align and distribute, all undoable and stored compactly in the map. Planets spin on a globe with
+  areas and distances measured on the sphere; country borders change through history with a time slider; maps nest inside
+  maps; routes show travel times; pins link to entries; towns are founded with one click. The Map panel holds View,
+  Layers and Settings; Atlas shortcuts are listed under ⋯ → Keyboard shortcuts.
+- **Chronicle** (World, shown as Timeline) — a timeline from millennia to hours on your world's own calendar, a month calendar with moons and
   seasons, chronologies, annals (an automatic history of any nation, house, city or person), successions and ages.
-- **Web** — how everything connects: a relationship graph with a path finder, family trees with a kinship calculator, and
+- **Web** (World, shown as Connections) — how everything connects: a relationship graph with a path finder, family trees with a kinship calculator, and
   a table of every relation.
-- **Boards** — infinite canvases for plotting, mind maps, investigations and mood boards.
-- **Lexicon** — languages with dictionaries, an IPA phonology builder, word and name generators, sound changes that
+- **Boards** (Create) — infinite canvases for plotting, mind maps, investigations and mood boards.
+- **Lexicon** (Create) — languages with dictionaries, an IPA phonology builder, word and name generators, sound changes that
   evolve daughter languages, a translator and scripts.
-- **Toolkit** — dice, random tables, a town generator and many more generators, an initiative tracker, a session runner
+- **Simulate** (Maps & Sim) — an economy engine for any setting (fantasy, historical, sci-fi): settlements gather, make, eat and trade along your map's routes;
+  prices follow supply and demand; goods travel as caravans or ships that take real travel days, can spoil and can be raided. Laws and customs are plain rules
+  (embargo, tariff, toll, price cap, tithe in kind, guild monopoly, festival, rationing, sacred or forbidden goods, escorts, seasonal bans) with a scope, a season
+  or a condition, written from a form with no code. Import settlements and routes from a map, auto-fill what each place makes and needs from terrain and
+  population, scrub a timeline over a network drawn on the map, read price, stock, wealth and population charts, compare a run with a rule on or off, and
+  record what happened (famines, raids, closed passes) as events in the Timeline. The result is saved on the map for the Atlas Economy view.
+  The engine is `src/shared/sim.js` (seeded and deterministic) with its own tests.
+- **Toolkit** (Play) — dice, random tables, a town generator and many more generators, an initiative tracker, a session runner
   and converters.
-- **Inbox** — quick captures and voice memos waiting to be sorted, and your tasks.
-- **Library** — the images, audio and files of a world, and where each is used.
-- **Publish** — a website of your world (a public wiki or a player wiki), a devlog with RSS, and exports and imports
+- **Inbox** (Collect) — quick captures and voice memos waiting to be sorted, and your tasks.
+- **Library** (Collect) — the images, audio and files of a world, and where each is used.
+- **Publish** (Share) — a website of your world (a public wiki or a player wiki), a devlog with RSS, and exports and imports
   (world packages, Markdown/Obsidian vaults, CSV, JSON, PDF).
-- **Business** — products, sales, supporters, coupons and reviews, for people who sell what they build.
-- **Checks** — continuity: characters appearing after their death, children born before their parents, people in two
+- **Business** (Share) — products, sales, supporters, coupons and reviews, for people who sell what they build.
+- **Checks** (World) — continuity: characters appearing after their death, children born before their parents, people in two
   places at once, broken links, duplicates (with merge), gaps and more.
-- **World** — the world's details, a calendar designer (months, weeks, leap years, eras, moons, seasons), the types and
+- **World settings** (Settings) — the world's details, a calendar designer (months, weeks, leap years, eras, moons, seasons), the types and
   fields editor, kinds of relations, tags, all your worlds, backups and data tools.
-- **Guide** (F1) — everything you can do, by purpose: maps and borders, towns, history, writing, running games,
+- **People & attributes** (World settings → Structure) — make the app fit any world: define your own classifications of people (Race, Class, Caste, Order, Clan, Calling… each with colours, icons, nested values such as Race → Subrace, single or several values per entry, and the entry types it applies to), attribute systems of any size (numbers with limits, rating dots, dice, choices, text, bars like HP, and formulas such as `floor((con - 10) / 2)`), modifiers per value that show as totals on the entry (an Elf gets +2 DEX, a Noble +1 Charm), and different words per people (Ruler → Thane for Northmen, Emir for desert folk) plus a naming style for name suggestions. Starter packs (Fantasy RPG, Historical, Sci-fi, Modern, Blank) can be mixed in one click and are never forced; configurations export and import as JSON. Character and Species get *Classification* and *Attributes* fields; worlds made earlier can add them with one button, and the old Stats field keeps working.
+- **Guide** (Settings, F1) — everything you can do, by purpose: maps and borders, towns, history, writing, running games,
   languages, game data, publishing and selling. Type what you want ("family tree", "sell my book") and each recipe opens
   the right place. The same recipes show up in Ctrl+K under *How to*.
 
@@ -64,7 +86,7 @@ reader would see it — handy for screen-sharing with players. Exports and the w
 | Ctrl+Click on any entry | Peek at it without leaving the screen |
 | Ctrl+Shift+F | Focus mode for writing |
 | Alt+← / Alt+→ | Back and forward |
-| Ctrl+1 … 9 | Jump to a screen |
+| Ctrl+1 … 9 | Open a sidebar group (the screen you used last in it) |
 | F1 | The Guide: what you can do, by purpose |
 | Shift+F1 | All shortcuts |
 

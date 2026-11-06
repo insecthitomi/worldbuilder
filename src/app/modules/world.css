@@ -68,3 +68,6 @@
 .wd-unl { display: flex; gap: .55em; align-items: flex-start; padding: .35em .4em; border-radius: .5em; cursor: pointer; }
 .wd-unl:hover { background: var(--hover); }
 .cx-unlinked { display: grid; gap: .45em; }
+.wd-sub { display: flex; flex-direction: column; gap: .35em; margin-bottom: .2em; }
+.wd-chips { display: flex; flex-wrap: wrap; gap: .4em; }
+.wd-desc { margin: 0; }

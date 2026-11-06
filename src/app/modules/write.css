@@ -363,7 +363,8 @@
 /* ---------- focus mode ---------- */
 html.wb-focus .gk-nav { display: none; }
 html.wb-focus .gk-shell { grid-template-columns: 0 minmax(0, 1fr); }
-html.wb-focus .gk-view { grid-column: 1 / -1; grid-row: 2; }
+html.wb-focus .gk-main { grid-column: 1 / -1; grid-row: 2; }
+html.wb-focus .gk-hubbar { display: none; }
 html.wb-focus .gk-titlebar { opacity: .16; transition: opacity .4s; }
 html.wb-focus .gk-titlebar:is(:hover, :focus-within) { opacity: 1; }
 .wbw-room.is-focus { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "main"; padding-top: 0; }
